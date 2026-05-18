@@ -2,7 +2,7 @@
 
 **AI classifier predicting pathogenic genetic variants in West African populations, with focus on malaria-resistance and sickle-cell (HBB) genes.**
 
-Built by a high school researcher in Accra, Ghana. Inspired by Harvard's [popEVE](https://www.nature.com/articles/s41588-023-01465-x) model — but optimized for West African genomic data, which is systematically underrepresented in existing tools.
+Built by a high school researcher in Accra, Ghana. Inspired by Harvard's [popEVE](https://www.nature.com/articles/s41588-025-02400-1) model — but optimized for West African genomic data, which is systematically underrepresented in existing tools.
 
 ---
 
