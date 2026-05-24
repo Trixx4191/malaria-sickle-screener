@@ -21,7 +21,7 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from src.utils.config import MODEL_FILE, MODELS_DIR, CADD_DELETERIOUS_THRESHOLD
 
-# ─── Load model ───────────────────────────────────────────────────────────────
+#  Load model 
 
 def load_model():
     if not MODEL_FILE.exists():
@@ -45,7 +45,7 @@ if meta_path.exists():
     with open(meta_path) as f:
         META = json.load(f)
 
-# ─── Prediction logic ─────────────────────────────────────────────────────────
+#  Prediction logic 
 
 GENE_REGION_MAP = {"Exonic (coding)": 2, "UTR (untranslated)": 1, "Intronic / other": 0}
 HBB_GENES = {"HBB", "HBB-LCR"}  # sickle-cell genes
@@ -112,7 +112,7 @@ def predict(
     return label, f"{prob_pct}% pathogenic probability", interpretation
 
 
-# ─── UI Layout ────────────────────────────────────────────────────────────────
+#  UI Layout
 
 CSS = """
 /* ── Typography ── */
@@ -205,7 +205,7 @@ DISCLAIMER = """
 ⚠ Research prototype. Not validated for clinical use. Predictions reflect patterns
 in ClinVar training data. Consult a medical geneticist for clinical variant interpretation.<br><br>
 Built by a high school researcher in Accra, Ghana · Inspired by Harvard's popEVE model ·
-<a href="https://github.com/yourname/malaria-sickle-screener" style="color:#555">GitHub</a>
+<a href="https://github.com/Trixx4191/malaria-sickle-screener" style="color:#555">GitHub</a>
 </div>
 """
 
