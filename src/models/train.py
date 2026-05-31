@@ -166,10 +166,12 @@ def plot_confusion(bundle: dict, X_test, y_test):
 
 
 def save_model(bundle: dict, df: pd.DataFrame):
+    feature_order_version = "v1"
     payload = {
         "model": bundle["model"],
         "scaler": bundle["scaler"],
         "feature_names": FEATURE_COLS,
+        "feature_order_version": feature_order_version,
         "model_type": bundle["type"],
         "auc": bundle["auc"],
         "training_size": len(df),

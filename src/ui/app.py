@@ -66,14 +66,33 @@ def predict(
     is_hbb = 1 if gene_name.strip().upper() in HBB_GENES else 0
     review_stars = 1   # default — single submitter (conservative)
 
-    X = np.array([[
-        allele_freq_afr,
-        cadd_score,
-        GENE_REGION_MAP.get(gene_region, 0),
-        conservation,
-        is_hbb,
-        review_stars,
-    ]])
+    # Canonical feature ordering comes from the saved model bundle.
+    feature_order = BUNDLE.get("feature_names")
+    if not feature_order:
+        return "Model schema missing", "—", "Saved model bundle does not include feature_names.\nRe-train the model with src/models/train.py."
+
+    feature_order_set = set(feature_order)
+    missing = [f for f in feature_order if f not in {
+        "allele_freq_afr",
+        "cadd_score",
+        "gene_region",
+        "conservation_phylop",
+        "is_hbb",
+        "review_stars",
+    }]
+    if missing:
+        return "Model schema mismatch", "—", f"UI cannot construct these required features: {missing}."
+
+    feature_values = {
+        "allele_freq_afr": allele_freq_afr,
+        "cadd_score": cadd_score,
+        "gene_region": GENE_REGION_MAP.get(gene_region, 0),
+        "conservation_phylop": conservation,
+        "is_hbb": is_hbb,
+        "review_stars": review_stars,
+    }
+
+    X = np.array([[feature_values[name] for name in feature_order]])
 
     prob_pathogenic = BUNDLE["model"].predict_proba(X)[0][1]
     prob_pct = round(prob_pathogenic * 100, 1)
