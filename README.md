@@ -24,6 +24,43 @@ Built by a high school researcher in Accra, Ghana. Inspired by Harvard's [popEVE
 
 ---
 
+## New: web app v2
+
+The web UI was rebuilt from scratch on **FastAPI** (the Gradio version is kept at
+`src/ui/app.py` for reference but is no longer the primary interface):
+
+- **3D DNA helix** (Three.js) that recolors and highlights the queried variant's
+  locus live, as predictions come back — teal for likely benign, gold for
+  borderline, clay-red for likely pathogenic.
+- **SHAP feature contributions** rendered as gel-electrophoresis-style lanes
+  (a genomics-native way to show which features pushed the call toward
+  pathogenic vs. benign, instead of a generic bar chart).
+- **Demo mode**: if the real pipeline hasn't been run yet (no ClinVar/1000G
+  data downloaded, no `variant_screener_v1.pkl`), the app trains a small
+  synthetic fallback model on startup so the UI is fully interactive out of
+  the box. This is always labeled clearly in the UI — it is *not* the
+  research result, just a way to demo the interface before the real data
+  pipeline has been run.
+
+### Run it
+
+```bash
+pip install -r requirements.txt
+uvicorn webapp.main:app --reload --port 8000
+# open http://localhost:8000
+```
+
+### Deploy to Hugging Face Spaces (Docker SDK)
+
+1. Create a new Space → SDK: **Docker**
+2. Push this repo (the `Dockerfile` at the repo root builds it automatically)
+3. The Space exposes the app on port 7860
+
+Once the real training pipeline has been run (`build_features.py` → `train.py`),
+the same UI automatically picks up the real model — no code changes needed.
+
+---
+
 ## The Problem
 
 Most variant pathogenicity classifiers (ClinVar, CADD, SIFT) are trained predominantly on European cohorts. When applied to West African populations — where sickle-cell trait frequency is 10–40% and malaria-resistance variants are common — they underperform. A community health worker in Accra using these tools gets less reliable predictions than a clinician in London using the same tool.
