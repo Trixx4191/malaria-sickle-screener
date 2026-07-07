@@ -47,7 +47,7 @@ def predict(payload: VariantInput):
     )
 
 
-app.mount("/assets", StaticFiles(directory=STATIC_DIR), name="assets")
+app.mount("/assets", StaticFiles(directory=STATIC_DIR / "assets"), name="assets")
 
 
 @app.get("/")

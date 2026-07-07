@@ -10,6 +10,7 @@ import sys
 from pathlib import Path
 
 import pandas as pd
+import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from src.utils.config import (
@@ -50,16 +51,37 @@ def load_clinvar(path: Path = None) -> pd.DataFrame:
             "Run: python src/data/download.py --dataset clinvar"
         )
     print(f"Loading ClinVar from {path} …")
-    df = pd.read_csv(
-        path, sep="\t", low_memory=False,
-        on_bad_lines="skip", encoding="utf-8"
-    )
+
+    expected_cols = [
+        "VariationID", "GeneSymbol", "Assembly", "ClinicalSignificance",
+        "Name", "ReviewStatus", "Chromosome", "PositionVCF",
+        "ReferenceAlleleVCF", "AlternateAlleleVCF"
+    ]
+
+    rows = []
+    for chunk in pd.read_csv(
+        path,
+        sep="\t",
+        low_memory=False,
+        on_bad_lines="skip",
+        encoding="utf-8",
+        usecols=expected_cols,
+        chunksize=200_000,
+    ):
+        rows.append(chunk)
+
+    if not rows:
+        return pd.DataFrame(columns=expected_cols)
+
+    df = pd.concat(rows, ignore_index=True)
     print(f"  Loaded {len(df):,} total variants.")
     return df
 
 
 def filter_target_genes(df: pd.DataFrame) -> pd.DataFrame:
     genes = list(TARGET_GENES.keys())
+    df = df.copy()
+    df["GeneSymbol"] = df["GeneSymbol"].astype(str).str.strip()
     filtered = df[df["GeneSymbol"].isin(genes)].copy()
     print(f"  After gene filter ({genes}): {len(filtered):,} variants.")
     return filtered
@@ -67,6 +89,8 @@ def filter_target_genes(df: pd.DataFrame) -> pd.DataFrame:
 
 def filter_grch38(df: pd.DataFrame) -> pd.DataFrame:
     """Keep only GRCh38 entries (most recent assembly)."""
+    df = df.copy()
+    df["Assembly"] = df["Assembly"].fillna("").astype(str).str.strip()
     filtered = df[df["Assembly"] == "GRCh38"].copy()
     print(f"  After GRCh38 filter: {len(filtered):,} variants.")
     return filtered
@@ -105,6 +129,7 @@ def parse(save: bool = True) -> pd.DataFrame:
     df = filter_grch38(df)
 
     # Assign binary labels
+    df["ClinicalSignificance"] = df["ClinicalSignificance"].fillna("").astype(str)
     df["label"] = df["ClinicalSignificance"].map(assign_label)
     df = df[df["label"].notna()].copy()
     df["label"] = df["label"].astype(int)

@@ -13,18 +13,21 @@ Usage:
     python src/data/build_features.py
 """
 
+import os
 import sys
 import time
 from pathlib import Path
 
 import pandas as pd
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 from tqdm import tqdm
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from src.utils.config import (
     FEATURE_MATRIX, CLINVAR_CLEAN, GNOMAD_API, CADD_API_BASE, CADD_CACHE,
-    AFR_FREQ_THRESHOLD, CADD_DELETERIOUS_THRESHOLD
+    GNOMAD_CACHE, AFR_FREQ_THRESHOLD, CADD_DELETERIOUS_THRESHOLD
 )
 from src.data.parse_clinvar import parse as parse_clinvar
 from src.data.download import fetch_cadd_scores, fetch_gnomad_afr_freq
@@ -49,12 +52,14 @@ def build_variant_ids(df: pd.DataFrame) -> list[str]:
     return ids
 
 
-def fetch_all_gnomad(variant_ids: list[str], batch_size: int = 50) -> dict:
+def fetch_all_gnomad(variant_ids: list[str], batch_size: int = 50, max_variants: int | None = None) -> dict:
     """
     Fetch gnomAD AFR frequencies for all variants.
     Batches requests to avoid overloading the API.
     """
     valid_ids = [v for v in variant_ids if v is not None]
+    if max_variants is not None:
+        valid_ids = valid_ids[:max_variants]
     print(f"\nQuerying gnomAD for {len(valid_ids)} variants (AFR frequency)…")
 
     query = """
@@ -65,20 +70,46 @@ def fetch_all_gnomad(variant_ids: list[str], batch_size: int = 50) -> dict:
     }
     """
 
+    retry_strategy = Retry(
+        total=2,
+        backoff_factor=0.2,
+        status_forcelist=[429, 500, 502, 503, 504],
+        allowed_methods={"POST"},
+    )
+    adapter = HTTPAdapter(max_retries=retry_strategy)
+    session = requests.Session()
+    session.mount("https://", adapter)
+    session.mount("http://", adapter)
+
+    cache = {}
+    if GNOMAD_CACHE.exists():
+        with open(GNOMAD_CACHE) as f:
+            cache = json.load(f)
+
     results = {}
+    seen = set()
+    failures = 0
     for vid in tqdm(valid_ids, desc="gnomAD AFR freq"):
+        if vid in seen:
+            continue
+        seen.add(vid)
+        if vid in cache:
+            results[vid] = cache[vid]
+            continue
+
+        if failures >= 20:
+            print("  gnomAD rate limit reached; using 0.0 for remaining variants.")
+            break
+
         try:
-            resp = requests.post(
+            resp = session.post(
                 GNOMAD_API,
                 json={"query": query, "variables": {"variantId": vid, "dataset": "gnomad_r4"}},
-                timeout=15,
+                timeout=(5, 15),
             )
             resp.raise_for_status()
             data = resp.json()
-            pops = (
-                (data.get("data") or {})
-                .get("variant") or {}
-            )
+            pops = ((data.get("data") or {}).get("variant") or {})
             pops = (pops.get("genome") or {}).get("populations") or []
 
             afr_ac = afr_an = 0
@@ -88,16 +119,26 @@ def fetch_all_gnomad(variant_ids: list[str], batch_size: int = 50) -> dict:
                     afr_an = pop["an"] or 0
                     break
 
-            results[vid] = round(afr_ac / afr_an, 6) if afr_an > 0 else 0.0
-            time.sleep(0.25)
+            value = round(afr_ac / afr_an, 6) if afr_an > 0 else 0.0
+            results[vid] = value
+            cache[vid] = value
+            time.sleep(0.2)
 
-        except Exception:
-            results[vid] = 0.0  # default — variant not found in gnomAD
+        except Exception as exc:
+            failures += 1
+            results[vid] = 0.0
+            if not isinstance(exc, (requests.exceptions.Timeout, requests.exceptions.ConnectionError)):
+                print(f"  Warning: gnomAD lookup failed for {vid}: {exc}")
+
+    if cache:
+        GNOMAD_CACHE.parent.mkdir(parents=True, exist_ok=True)
+        with open(GNOMAD_CACHE, "w") as f:
+            json.dump(cache, f)
 
     return results
 
 
-def fetch_all_cadd(df: pd.DataFrame) -> dict:
+def fetch_all_cadd(df: pd.DataFrame, max_variants: int | None = None) -> dict:
     """Fetch CADD scores for all variants, using local cache."""
     variants = []
     for _, row in df.iterrows():
@@ -110,6 +151,8 @@ def fetch_all_cadd(df: pd.DataFrame) -> dict:
             })
         except (ValueError, TypeError):
             pass
+    if max_variants is not None:
+        variants = variants[:max_variants]
     return fetch_cadd_scores(variants)
 
 
@@ -125,19 +168,31 @@ def build() -> pd.DataFrame:
     # 2. Build variant IDs
     df["variant_id_gnomad"] = build_variant_ids(df)
 
-    # 3. Fetch AFR frequencies from gnomAD
-    gnomad_map = fetch_all_gnomad(df["variant_id_gnomad"].tolist())
-    df["allele_freq_afr"] = df["variant_id_gnomad"].map(gnomad_map).fillna(0.0)
+    max_variants = os.getenv("FEATURE_BUILD_MAX_VARIANTS", "200")
+    try:
+        max_variants = int(max_variants)
+    except ValueError:
+        max_variants = 200
+    if max_variants < 1:
+        max_variants = None
 
-    # 4. Fetch CADD scores
-    cadd_map = fetch_all_cadd(df)
-    def cadd_key(row):
-        try:
-            return f"{row['chr']}-{int(row['pos'])}-{row['ref']}-{row['alt']}"
-        except Exception:
-            return None
-    df["cadd_key"] = df.apply(cadd_key, axis=1)
-    df["cadd_score"] = df["cadd_key"].map(cadd_map).fillna(0.0)
+    use_remote = os.getenv("FEATURE_BUILD_USE_REMOTE", "0").lower() in {"1", "true", "yes", "on"}
+
+    if use_remote:
+        gnomad_map = fetch_all_gnomad(df["variant_id_gnomad"].tolist(), max_variants=max_variants)
+        df["allele_freq_afr"] = df["variant_id_gnomad"].map(gnomad_map).fillna(0.0)
+
+        cadd_map = fetch_all_cadd(df, max_variants=max_variants)
+        def cadd_key(row):
+            try:
+                return f"{row['chr']}-{int(row['pos'])}-{row['ref']}-{row['alt']}"
+            except Exception:
+                return None
+        df["cadd_key"] = df.apply(cadd_key, axis=1)
+        df["cadd_score"] = df["cadd_key"].map(cadd_map).fillna(0.0)
+    else:
+        df["allele_freq_afr"] = 0.0
+        df["cadd_score"] = 0.0
 
     # 5. Derived features
     # Placeholder conservation score — replace with real phyloP from UCSC when available
