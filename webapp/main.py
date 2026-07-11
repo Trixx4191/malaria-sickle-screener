@@ -11,16 +11,56 @@ Deploy to Hugging Face Spaces (Docker SDK):
 from pathlib import Path
 from typing import Literal
 
-from fastapi import FastAPI
-from fastapi.responses import FileResponse
-from fastapi.staticfiles import StaticFiles
+from fastapi import FastAPI, HTTPException
+
 from pydantic import BaseModel, Field
 
 from .model_service import service
 
-STATIC_DIR = Path(__file__).resolve().parent / "static"
+
+HEATMAP_DIR = Path(__file__).resolve().parent.parent / "data" / "heatmaps"
 
 app = FastAPI(title="West Africa Variant Screener API")
+
+
+# Reference metadata for the genes this tool covers. `structures` lists real
+# deposited PDB entries where one exists; `alphafold_uniprot` is used as a
+# fallback (clearly labeled as a predicted model, not an experimental one)
+# for targets with no experimental structure, e.g. DARC/ACKR1 (a GPCR).
+GENE_REGISTRY = {
+    "HBB": {
+        "uniprot": "P68871",
+        "structures": [
+            {"id": "2HHB", "chain": "B", "label": "2HHB — deoxyhemoglobin (T state)"},
+            {"id": "1HHO", "chain": "B", "label": "1HHO — oxyhemoglobin (R state)"},
+        ],
+    },
+    "HBA1": {
+        "uniprot": "P69905",
+        "structures": [
+            {"id": "2HHB", "chain": "A", "label": "2HHB — deoxyhemoglobin (T state)"},
+            {"id": "1HHO", "chain": "A", "label": "1HHO — oxyhemoglobin (R state)"},
+        ],
+    },
+    "HBA2": {
+        "uniprot": "P69905",
+        "structures": [
+            {"id": "2HHB", "chain": "C", "label": "2HHB — deoxyhemoglobin (T state)"},
+            {"id": "1HHO", "chain": "C", "label": "1HHO — oxyhemoglobin (R state)"},
+        ],
+    },
+    "G6PD": {
+        "uniprot": "P11413",
+        "structures": [
+            {"id": "2BH9", "chain": "A", "label": "2BH9 — human G6PD dimer"},
+        ],
+    },
+    "DARC": {
+        "uniprot": "Q16570",
+        "structures": [],
+        "alphafold_uniprot": "Q16570",
+    },
+}
 
 
 class VariantInput(BaseModel):
@@ -47,14 +87,32 @@ def predict(payload: VariantInput):
     )
 
 
-app.mount("/assets", StaticFiles(directory=STATIC_DIR / "assets"), name="assets")
+@app.get("/api/gene-registry")
+def gene_registry():
+    """Known genes with UniProt accession + available real/AlphaFold structures."""
+    return GENE_REGISTRY
 
 
-@app.get("/")
-def index():
-    return FileResponse(STATIC_DIR / "index.html")
+@app.get("/api/heatmap/{gene}")
+def heatmap(gene: str):
+    """
+    Serve a precomputed per-position x per-substitution effect matrix
+    (ESM2 zero-shot masked-marginal scores — see scripts/compute_heatmap.py).
+
+    Returns 404 if the gene has no cached heatmap yet; the frontend treats
+    that as "no matrix available" and hides the panel rather than faking data.
+    """
+    path = HEATMAP_DIR / f"{gene.upper()}.json"
+    if not path.exists():
+        raise HTTPException(status_code=404, detail=f"No heatmap cached for gene '{gene}'. Run scripts/compute_heatmap.py first.")
+    import json
+    return json.loads(path.read_text())
+
+
+
 
 
 if __name__ == "__main__":
+
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=7860)

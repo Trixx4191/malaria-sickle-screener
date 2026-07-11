@@ -1,14 +1,197 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#080b10" />
-    <title>West Africa Variant Screener</title>
-    <script type="module" crossorigin src="/assets/index-D1aCHi4g.js"></script>
-    <link rel="stylesheet" crossorigin href="/assets/index-BBdf8Vtb.css">
-  </head>
-  <body>
-    <div id="root"></div>
-  </body>
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Variant Screener — West Africa AFR Cohort</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+
+<header class="masthead">
+  <div class="masthead-left">
+    <span class="mark">◆</span>
+    <h1>VARIANT&nbsp;SCREENER</h1>
+  </div>
+  <div class="masthead-right">
+    <span class="tag">WEST AFRICA / AFR COHORT</span>
+    <span class="tag tag--num" id="case-number">No. 000001</span>
+  </div>
+</header>
+
+<div class="statusbar" id="statusbar">
+  <span id="model-type">MODEL — LOADING…</span>
+  <span id="model-auc">AUC —</span>
+  <span id="model-training">TRAINING SET —</span>
+  <span id="demo-flag" class="hidden">DEMO MODE — SYNTHETIC MODEL</span>
+</div>
+
+<main class="grid">
+
+  <!-- LEFT: INPUT + RESULT -->
+  <section class="col col--narrow">
+
+    <div class="panel panel--input">
+      <div class="panel-head">
+        <h2>01 / INPUT</h2>
+        <span class="panel-head-sub">REQUISITION</span>
+      </div>
+
+      <div class="field">
+        <label for="gene_name">GENE SYMBOL</label>
+        <input type="text" id="gene_name" value="HBB" maxlength="16" />
+      </div>
+
+      <div class="field">
+        <label for="gene_region">GENE REGION</label>
+        <div class="segmented" id="gene_region_group">
+          <button type="button" class="seg-btn active" data-value="Exonic (coding)">EXONIC</button>
+          <button type="button" class="seg-btn" data-value="UTR (untranslated)">UTR</button>
+          <button type="button" class="seg-btn" data-value="Intronic / other">INTRONIC</button>
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="allele_freq_afr">AFR ALLELE FREQ <span class="readout" id="allele_freq_afr_val">0.010</span></label>
+        <input type="range" id="allele_freq_afr" min="0" max="1" step="0.001" value="0.01" />
+        <div class="scale-labels"><span>0.000 rare</span><span>1.000 common</span></div>
+      </div>
+
+      <div class="field">
+        <label for="cadd_score">CADD PHRED <span class="readout" id="cadd_score_val">15.0</span></label>
+        <input type="range" id="cadd_score" min="0" max="60" step="0.5" value="15" />
+        <div class="scale-labels"><span>0 benign</span><span>60 deleterious</span></div>
+      </div>
+
+      <div class="field">
+        <label for="conservation_phylop">CONSERVATION <span class="readout" id="conservation_phylop_val">0.5</span></label>
+        <input type="range" id="conservation_phylop" min="-3" max="3" step="0.1" value="0.5" />
+        <div class="scale-labels"><span>-3 fast</span><span>+3 conserved</span></div>
+      </div>
+
+      <button id="predict-btn" class="predict-btn">RUN PREDICTION →</button>
+      <p class="hint" id="error-hint"></p>
+    </div>
+
+    <div class="panel panel--result">
+      <div class="panel-head">
+        <h2>02 / RESULT</h2>
+        <span class="panel-head-sub">CALL</span>
+      </div>
+
+      <div id="result-empty" class="empty-state">
+        NO CALL ON RECORD.
+      </div>
+
+      <div id="result-card" class="result-card hidden">
+        <div class="stamp-wrap">
+          <div id="stamp" class="stamp">LIKELY PATHOGENIC</div>
+        </div>
+
+        <div class="probability-row">
+          <span id="probability-value" class="probability-value">0.0%</span>
+          <span class="probability-label">PATHOGENIC PROBABILITY</span>
+        </div>
+
+        <div class="probability-bar-track">
+          <div id="probability-bar-fill" class="probability-bar-fill"></div>
+        </div>
+
+        <div class="subsection">
+          <h3>INTERPRETATION</h3>
+          <ul id="interpretation-list" class="interpretation-list"></ul>
+        </div>
+
+        <div class="subsection">
+          <h3>FEATURE CONTRIBUTIONS</h3>
+          <div id="contributions" class="contributions"></div>
+        </div>
+      </div>
+    </div>
+
+  </section>
+
+  <!-- CENTER: SUBSTITUTION MATRIX (hidden until precomputed data exists) -->
+  <section class="col col--wide panel panel--matrix hidden" id="matrix-panel">
+    <div class="panel-head">
+      <h2>03 / SUBSTITUTION MATRIX</h2>
+      <span class="panel-head-sub" id="matrix-sub">ESM2 ZERO-SHOT — CLICK A COLUMN</span>
+    </div>
+
+    <div class="matrix-legend">
+      <span class="matrix-legend-label" id="legend-min">min</span>
+      <div class="matrix-legend-bar"></div>
+      <span class="matrix-legend-label" id="legend-max">max</span>
+      <span class="matrix-legend-caption">log-odds vs. WT (masked-marginal)</span>
+    </div>
+
+    <div class="matrix-scroll" id="matrix-scroll">
+      <div class="matrix-inner">
+        <canvas id="matrix-col-labels" class="matrix-col-labels"></canvas>
+        <div class="matrix-body">
+          <canvas id="matrix-row-labels" class="matrix-row-labels"></canvas>
+          <canvas id="matrix-canvas" class="matrix-canvas"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <div class="subsection matrix-table-wrap">
+      <h3>SUBSTITUTIONS <span id="matrix-table-pos"></span></h3>
+      <div class="matrix-table-scroll">
+        <table class="matrix-table" id="matrix-table">
+          <thead>
+            <tr><th>WT</th><th>POS</th><th>SUB</th><th>EFFECT</th></tr>
+          </thead>
+          <tbody id="matrix-table-body">
+            <tr><td colspan="4" class="matrix-table-empty">Click a column in the matrix above.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- RIGHT: 3D STRUCTURE -->
+  <aside class="col col--fixed panel panel--structure">
+    <div class="panel-head panel-head--structure">
+      <div>
+        <h2>04 / STRUCTURE</h2>
+        <span class="panel-head-sub">DRAG TO ROTATE</span>
+      </div>
+      <div class="structure-controls">
+        <select id="pdb-select" class="pdb-select"></select>
+        <button id="download-btn" class="icon-btn" title="Download structure file">↓</button>
+        <button id="reset-btn" class="icon-btn" title="Reset view">⟳</button>
+      </div>
+    </div>
+
+    <div id="viewer" class="viewer"></div>
+
+    <div class="structure-meta">
+      <div class="structure-meta-row">
+        <span>SOURCE</span>
+        <span id="pdb-id">PDB 2HHB</span>
+      </div>
+      <div class="structure-meta-row">
+        <span>CHAIN</span>
+        <span id="pdb-chain">B</span>
+      </div>
+      <div class="structure-meta-row">
+        <span>NOTE</span>
+        <span id="pdb-note">Human deoxyhemoglobin, beta subunit</span>
+      </div>
+    </div>
+  </aside>
+
+</main>
+
+<footer class="footer">
+  <span>MALARIA-RESISTANCE VARIANT SCREENER — RESEARCH USE ONLY, NOT A CLINICAL DIAGNOSTIC</span>
+</footer>
+
+<script src="https://3Dmol.org/build/3Dmol-min.js"></script>
+<script src="/script.js"></script>
+</body>
 </html>

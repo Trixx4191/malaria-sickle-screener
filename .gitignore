@@ -12,8 +12,20 @@ __pycache__/
 dist/
 build/
 .eggs/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.nox/
 
-# Data —  raw genomic data
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Data — raw genomic data
+data/
 data/raw/
 data/processed/
 data/external/
@@ -23,11 +35,31 @@ data/external/
 *.bam
 *.sam
 
-# Models — large files, use Git LFS or HF Hub instead
-outputs/models/*.pkl
-outputs/models/*.joblib
+# Models and large artifacts — use Git LFS, DVC, or a model registry instead
+*.pkl
+*.pickle
+*.joblib
+*.pt
+*.pth
+*.onnx
+*.bin
+*.h5
+*.hdf5
+*.npz
+*.npy
+*.zip
+*.tar
+*.tgz
+
+# Output directories and generated assets
+outputs/
+webapp/static/assets/
+**/node_modules/
+**/.vite/
+**/dist/
 
 # Keep the directory structure
+!outputs/.gitkeep
 !outputs/models/.gitkeep
 !outputs/figures/.gitkeep
 !data/raw/.gitkeep
@@ -47,10 +79,6 @@ Thumbs.db
 *.swp
 
 # Node / frontend tooling
-node_modules/
-webapp/frontend/node_modules/
-webapp/frontend/dist/
-webapp/frontend/.vite/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
