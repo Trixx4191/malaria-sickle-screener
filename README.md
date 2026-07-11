@@ -24,23 +24,39 @@ Built by a high school researcher in Accra, Ghana. Inspired by Harvard's [popEVE
 
 ---
 
-## New: web app v2
+## Web app v4 — brutalist requisition UI + live structure + substitution matrix
 
-The web UI was rebuilt from scratch on **FastAPI** (the Gradio version is kept at
-`src/ui/app.py` for reference but is no longer the primary interface):
+The web UI is a single FastAPI backend (`webapp/main.py`, `webapp/model_service.py`)
+serving a plain HTML/CSS/JS frontend (`webapp/static/`). No Gradio, no React/Vite
+build step, no scripted "cinematic" camera animation — everything renders straight
+from static files. Layout is four numbered panels:
 
-- **3D DNA helix** (Three.js) that recolors and highlights the queried variant's
-  locus live, as predictions come back — teal for likely benign, gold for
-  borderline, clay-red for likely pathogenic.
-- **SHAP feature contributions** rendered as gel-electrophoresis-style lanes
-  (a genomics-native way to show which features pushed the call toward
-  pathogenic vs. benign, instead of a generic bar chart).
+- **01 / INPUT + 02 / RESULT** (left column): the variant requisition form
+  (gene, region, allele frequency, CADD, conservation) and the pathogenicity
+  call — a rubber-stamp-style tier badge (green / amber / red), probability
+  bar, interpretation notes, and SHAP feature-contribution bars.
+- **03 / SUBSTITUTION MATRIX** (center, popEVE-style): a per-position ×
+  per-amino-acid heatmap of ESM2 zero-shot mutation-effect scores
+  (masked-marginal log-odds vs. WT — the same class of signal as EVE/popEVE,
+  computed from a protein language model instead of a per-protein MSA/VAE).
+  Click a column to list all 20 substitutions at that position, sorted by
+  effect, in the table below. **This panel only appears once real data has
+  been precomputed for that gene** — see `scripts/compute_heatmap.py` and
+  `data/heatmaps/README.md`. It stays hidden rather than showing placeholder
+  numbers.
+- **04 / STRUCTURE** (right): a real `3Dmol.js` molecular viewer with a PDB
+  dropdown (`2HHB`/`1HHO` for HBB/HBA1/HBA2, `2BH9` for G6PD, an AlphaFold
+  model for DARC — clearly labeled as predicted, not experimental), plus
+  Download (saves the loaded structure file) and Reset (recenters the
+  camera) buttons. Rotation is manual drag-only — no auto-orbiting camera,
+  no particles/bloom. The highlighted chain recolors to match the
+  pathogenicity tier once a prediction comes back.
 - **Demo mode**: if the real pipeline hasn't been run yet (no ClinVar/1000G
   data downloaded, no `variant_screener_v1.pkl`), the app trains a small
   synthetic fallback model on startup so the UI is fully interactive out of
-  the box. This is always labeled clearly in the UI — it is *not* the
-  research result, just a way to demo the interface before the real data
-  pipeline has been run.
+  the box. This is always labeled clearly in the status bar — it is *not*
+  the research result, just a way to demo the interface before the real
+  data pipeline has been run.
 
 ### Run it
 
@@ -48,6 +64,19 @@ The web UI was rebuilt from scratch on **FastAPI** (the Gradio version is kept a
 pip install -r requirements.txt
 uvicorn webapp.main:app --reload --port 8000
 # open http://localhost:8000
+```
+
+### Generate the substitution matrix (optional)
+
+The "03 / SUBSTITUTION MATRIX" panel needs a one-time precompute per gene —
+it needs internet access to `rest.uniprot.org` and `huggingface.co`, so it's
+meant to be run on your own machine, not inside a restricted sandbox:
+
+```bash
+pip install -r scripts/requirements-heatmap.txt
+python scripts/compute_heatmap.py --gene HBB
+# or for every gene the app knows about:
+python scripts/compute_heatmap.py --all
 ```
 
 ### Deploy to Hugging Face Spaces (Docker SDK)
@@ -60,6 +89,7 @@ Once the real training pipeline has been run (`build_features.py` → `train.py`
 the same UI automatically picks up the real model — no code changes needed.
 
 ---
+
 
 ## The Problem
 
@@ -77,7 +107,12 @@ malaria-sickle-screener/
 ├── data/
 │   ├── raw/                  # Downloaded source files (gitignored, see DATA.md)
 │   ├── processed/            # Cleaned feature matrices
-│   └── external/             # Reference files (gene annotations, etc.)
+│   ├── external/             # Reference files (gene annotations, etc.)
+│   └── heatmaps/             # Precomputed ESM2 substitution matrices (see below), empty by default
+│
+├── scripts/
+│   ├── compute_heatmap.py         # Generates data/heatmaps/<GENE>.json (run locally, needs internet)
+│   └── requirements-heatmap.txt   # torch/transformers, only needed for the script above
 │
 ├── src/
 │   ├── data/
@@ -89,11 +124,14 @@ malaria-sickle-screener/
 │   │   ├── train.py          # Model training pipeline
 │   │   ├── evaluate.py       # Evaluation metrics + SHAP
 │   │   └── predict.py        # Inference on new variants
-│   ├── utils/
-│   │   ├── config.py         # Paths, constants, settings
-│   │   └── logger.py         # Logging setup
-│   └── ui/
-│       └── app.py            # Gradio web interface
+│   └── utils/
+│       ├── config.py         # Paths, constants, settings
+│       └── logger.py         # Logging setup
+│
+├── webapp/
+│   ├── main.py                # FastAPI app: /api/model-info, /api/predict, static mount
+│   ├── model_service.py       # Model loading, prediction, SHAP explanations
+│   └── static/                # Plain HTML/CSS/JS frontend (index.html, style.css, script.js)
 │
 ├── notebooks/
 │   ├── 01_data_exploration.ipynb
@@ -162,7 +200,8 @@ python src/models/train.py --model random_forest
 ### 6. Run the web UI
 
 ```bash
-python src/ui/app.py
+uvicorn webapp.main:app --reload --port 8000
+# open http://localhost:8000
 ```
 
 ---
@@ -188,7 +227,7 @@ See `docs/DATA.md` for download instructions for each.
 | NCBI E-utilities | ClinVar programmatic download | Register at ncbi.nlm.nih.gov/account | Free |
 | gnomAD GraphQL | Population frequency queries | No key needed (public API) | Free |
 | MalariaGEN | Pf7 dataset access | Register at malariagen.net/data | Free |
-| Hugging Face | Deploy Gradio app | hf.co/join | Free |
+| Hugging Face | Deploy the FastAPI app (Docker SDK) | hf.co/join | Free |
 
 No paid APIs required. Total cost: $0.
 

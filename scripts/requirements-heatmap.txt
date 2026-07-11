@@ -1,0 +1,5 @@
+# Optional — only needed to run scripts/compute_heatmap.py locally.
+# Not required to run the web app itself.
+torch>=2.0.0
+transformers>=4.30.0
+requests>=2.28.0
