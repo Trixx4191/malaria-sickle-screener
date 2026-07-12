@@ -44,11 +44,18 @@ async function loadModelInfo() {
     const res = await fetch("/api/model-info");
     const data = await res.json();
     const bar = $("status-bar");
+    const m = data.meta || {};
+
     if (data.demo_mode) {
       bar.textContent = "⚠ DEMO MODE — synthetic fallback model (real pipeline not yet run)";
+      bar.style.color = "#8B1A1A";
+    } else if (data.data_provenance !== "real") {
+      bar.textContent = `⚠ REAL MODEL, PLACEHOLDER DATA — trained on features with data_provenance="${data.data_provenance}". ` +
+                         `Re-run build_features.py (real data is now the default) and retrain.`;
+      bar.style.color = "#8B1A1A";
     } else {
-      const m = data.meta || {};
-      bar.textContent = `model: ${m.model_type || "?"} · AUC ${m.auc_all ?? "?"} · n=${m.training_variants ?? "?"}`;
+      bar.textContent = `✓ real data · model: ${m.model_type || "?"} · AUC ${m.auc_all ?? "?"} · n=${m.training_variants ?? "?"}`;
+      bar.style.color = "#0F5E3A";
     }
   } catch (e) {
     $("status-bar").textContent = "model-info unavailable";
@@ -100,7 +107,10 @@ function renderResult(result) {
   stamp.className = "tier-stamp " + result.color;
 
   $("prob-bar-fill").style.width = result.probability + "%";
-  $("prob-label").textContent = `${result.probability}% pathogenic probability` + (result.demo_mode ? "  (demo model)" : "");
+  let caveat = "";
+  if (result.demo_mode) caveat = "  (demo model — not real data)";
+  else if (result.data_provenance !== "real") caveat = `  (⚠ trained on ${result.data_provenance} data, not real gnomAD/CADD)`;
+  $("prob-label").textContent = `${result.probability}% pathogenic probability` + caveat;
 
   const notesList = $("notes-list");
   notesList.innerHTML = "";

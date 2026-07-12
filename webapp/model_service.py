@@ -108,9 +108,17 @@ class ModelService:
             with open(meta_path) as f:
                 self.meta = json.load(f)
 
+        # data_provenance lives in the bundle itself (set by train.py) as the
+        # source of truth — model_meta.json can go stale/missing independently.
+        self.data_provenance = (
+            "synthetic_placeholder" if self.demo_mode
+            else self.bundle.get("data_provenance", "unknown")
+        )
+
     def model_info(self):
         return {
             "demo_mode": self.demo_mode,
+            "data_provenance": self.data_provenance,
             "meta": self.meta,
             "feature_order": FEATURE_ORDER,
             "genes": list(TARGET_GENES.keys()),
@@ -165,6 +173,7 @@ class ModelService:
             "notes": notes,
             "contributions": contributions,
             "demo_mode": self.demo_mode,
+            "data_provenance": self.data_provenance,
         }
 
     @staticmethod

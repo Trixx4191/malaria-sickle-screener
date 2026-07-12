@@ -45,6 +45,17 @@ FEATURE_COLS = [
 ]
 
 
+def load_data_provenance() -> dict:
+    """Read the sidecar file build_features.py writes, describing whether
+    allele_freq_afr/cadd_score came from real gnomAD/CADD API calls or a
+    zero-filled placeholder. Missing file = assume unknown/legacy matrix."""
+    provenance_path = FEATURE_MATRIX.with_name("features_provenance.json")
+    if not provenance_path.exists():
+        return {"data_provenance": "unknown"}
+    with open(provenance_path) as f:
+        return json.load(f)
+
+
 def load_features() -> pd.DataFrame:
     if not FEATURE_MATRIX.exists():
         raise FileNotFoundError(
@@ -54,6 +65,15 @@ def load_features() -> pd.DataFrame:
     df = pd.read_csv(FEATURE_MATRIX)
     print(f"Loaded {len(df):,} variants. Label distribution:")
     print(df["label"].value_counts().to_string())
+
+    provenance = load_data_provenance()
+    if provenance.get("data_provenance") != "real":
+        print("\n" + "!" * 60)
+        print(f"WARNING: feature matrix data_provenance = "
+              f"'{provenance.get('data_provenance')}', not 'real'.")
+        print("allele_freq_afr and/or cadd_score may be placeholder values.")
+        print("Re-run build_features.py without --allow-fake for a real model.")
+        print("!" * 60 + "\n")
     return df
 
 
@@ -167,6 +187,7 @@ def plot_confusion(bundle: dict, X_test, y_test):
 
 def save_model(bundle: dict, df: pd.DataFrame):
     feature_order_version = "v1"
+    provenance = load_data_provenance()
     payload = {
         "model": bundle["model"],
         "scaler": bundle["scaler"],
@@ -175,6 +196,7 @@ def save_model(bundle: dict, df: pd.DataFrame):
         "model_type": bundle["type"],
         "auc": bundle["auc"],
         "training_size": len(df),
+        "data_provenance": provenance.get("data_provenance", "unknown"),
     }
     joblib.dump(payload, MODEL_FILE)
     print(f"\n✓ Model saved: {MODEL_FILE}")
@@ -187,11 +209,12 @@ def save_model(bundle: dict, df: pd.DataFrame):
         "cv_std": round(bundle.get("cv_std", 0), 4),
         "feature_names": FEATURE_COLS,
         "training_variants": len(df),
+        "data_provenance": provenance.get("data_provenance", "unknown"),
     }
     meta_path = MODELS_DIR / "model_meta.json"
     with open(meta_path, "w") as f:
         json.dump(meta, f, indent=2)
-    print(f"✓ Metadata saved: {meta_path}")
+    print(f"✓ Metadata saved: {meta_path}  (data_provenance={meta['data_provenance']})")
 
 
 def main():
