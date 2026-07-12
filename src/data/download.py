@@ -111,6 +111,7 @@ def fetch_cadd_scores(variants: list[dict]) -> dict:
 
     results = dict(cache)
     new_fetches = 0
+    consecutive_failures = 0
 
     for v in tqdm(variants, desc="CADD API"):
         key = f"{v['chr']}-{v['pos']}-{v['ref']}-{v['alt']}"
@@ -118,18 +119,40 @@ def fetch_cadd_scores(variants: list[dict]) -> dict:
             continue
 
         url = f"{CADD_API_BASE}{v['chr']}:{v['pos']}_{v['ref']}_{v['alt']}"
-        try:
-            resp = requests.get(url, timeout=10)
-            resp.raise_for_status()
-            data = resp.json()
-            # CADD returns a list; take the first PHRED score
-            score = data[1][5] if len(data) > 1 else None
-            results[key] = float(score) if score is not None else None
+        score = None
+        for attempt in range(5):
+            try:
+                resp = requests.get(url, timeout=10)
+                if resp.status_code == 429:
+                    retry_after = resp.headers.get("Retry-After")
+                    wait = float(retry_after) if retry_after else min(60, 2 ** attempt * 3)
+                    time.sleep(wait)
+                    continue
+                resp.raise_for_status()
+                data = resp.json()
+                raw = data[1][5] if len(data) > 1 else None
+                score = float(raw) if raw is not None else None
+                break
+            except (requests.exceptions.Timeout, requests.exceptions.ConnectionError):
+                time.sleep(min(20, 2 ** attempt * 2))
+            except Exception as e:
+                print(f"  Warning: CADD fetch failed for {key}: {e}")
+                break
+
+        results[key] = score  # None if genuinely unresolvable — never faked
+        if score is None:
+            consecutive_failures += 1
+            if consecutive_failures >= 15:
+                print("\n" + "!" * 60)
+                print(f"CADD API has failed {consecutive_failures} lookups in a row —")
+                print("likely persistently rate-limited. Stopping instead of continuing")
+                print("to hammer it. Already-fetched scores are cached.")
+                print("!" * 60)
+                break
+        else:
+            consecutive_failures = 0
             new_fetches += 1
             time.sleep(1.0)   # respect rate limit
-        except Exception as e:
-            print(f"  Warning: CADD fetch failed for {key}: {e}")
-            results[key] = None
 
     # Save updated cache
     with open(CADD_CACHE, "w") as f:
