@@ -1,412 +1,280 @@
-/* ==========================================================================
-   STATE
-   ========================================================================== */
+const $ = (id) => document.getElementById(id);
+
 const state = {
-  allele_freq_afr: 0.01,
-  cadd_score: 15,
-  gene_region: "Exonic (coding)",
-  conservation_phylop: 0.5,
-  gene_name: "HBB",
+  viewer: null,
+  currentPdbData: null,
+  currentPdbId: null,
 };
 
-let caseCounter = 0;
-let geneRegistry = {};
-let viewer = null;
-let currentPdbId = null;
-let currentPdbText = null;
-let heatmapData = null; // {gene, sequence, positions:[{pos,wt,effects}]}
-const ROW_ORDER = ["L","I","M","V","F","Y","W","K","R","H","E","D","N","Q","S","T","G","A","P","C"];
-const HEAT_STOPS = ["#1B1B3A", "#3D5A80", "#93B7D6", "#E8C77A"];
-const CELL_W = 10;
-const CELL_H = 14;
+const EXAMPLES = {
+  "hbs":          { gene_name: "HBB",  allele_freq_afr: 0.004, cadd_score: 34.0, gene_region: "exonic",   conservation_phylop: 2.1 },
+  "hbb-path":     { gene_name: "HBB",  allele_freq_afr: 0.001, cadd_score: 28.0, gene_region: "exonic",   conservation_phylop: 1.8 },
+  "g6pd-benign":  { gene_name: "G6PD", allele_freq_afr: 0.420, cadd_score: 3.0,  gene_region: "intronic", conservation_phylop: -0.5 },
+  "g6pd-rare":    { gene_name: "G6PD", allele_freq_afr: 0.000, cadd_score: 42.0, gene_region: "exonic",   conservation_phylop: 2.8 },
+};
 
-/* ==========================================================================
-   INIT
-   ========================================================================== */
-document.addEventListener("DOMContentLoaded", async () => {
-  caseCounter = Math.floor(Math.random() * 900000) + 100000;
-  document.getElementById("case-number").textContent = `No. ${caseCounter}`;
+function initSliders() {
+  const af = $("allele_freq_afr"), afVal = $("af-val");
+  af.addEventListener("input", () => afVal.textContent = Number(af.value).toFixed(3));
 
-  bindInputs();
-  loadModelInfo();
-  initViewer();
+  const cadd = $("cadd_score"), caddVal = $("cadd-val");
+  cadd.addEventListener("input", () => caddVal.textContent = Number(cadd.value).toFixed(1));
 
-  await loadGeneRegistry();
-  await refreshGene(state.gene_name);
-
-  document.getElementById("predict-btn").addEventListener("click", runPrediction);
-  document.getElementById("pdb-select").addEventListener("change", onPdbSelectChange);
-  document.getElementById("download-btn").addEventListener("click", downloadStructure);
-  document.getElementById("reset-btn").addEventListener("click", () => { if (viewer) { viewer.zoomTo(); viewer.render(); } });
-});
-
-/* ==========================================================================
-   INPUT BINDING
-   ========================================================================== */
-function bindInputs() {
-  const freq = document.getElementById("allele_freq_afr");
-  freq.addEventListener("input", () => {
-    state.allele_freq_afr = Number(freq.value);
-    document.getElementById("allele_freq_afr_val").textContent = state.allele_freq_afr.toFixed(3);
-  });
-
-  const cadd = document.getElementById("cadd_score");
-  cadd.addEventListener("input", () => {
-    state.cadd_score = Number(cadd.value);
-    document.getElementById("cadd_score_val").textContent = state.cadd_score.toFixed(1);
-  });
-
-  const cons = document.getElementById("conservation_phylop");
-  cons.addEventListener("input", () => {
-    state.conservation_phylop = Number(cons.value);
-    document.getElementById("conservation_phylop_val").textContent = state.conservation_phylop.toFixed(1);
-  });
-
-  const gene = document.getElementById("gene_name");
-  gene.addEventListener("change", async () => {
-    const val = gene.value.trim().toUpperCase() || "HBB";
-    gene.value = val;
-    state.gene_name = val;
-    await refreshGene(val);
-  });
-
-  const segGroup = document.getElementById("gene_region_group");
-  segGroup.querySelectorAll(".seg-btn").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      segGroup.querySelectorAll(".seg-btn").forEach((b) => b.classList.remove("active"));
-      btn.classList.add("active");
-      state.gene_region = btn.dataset.value;
-    });
-  });
+  const cons = $("conservation_phylop"), consVal = $("cons-val");
+  cons.addEventListener("input", () => consVal.textContent = Number(cons.value).toFixed(1));
 }
 
-/* ==========================================================================
-   MODEL INFO
-   ========================================================================== */
+function applyExample(key) {
+  const ex = EXAMPLES[key];
+  if (!ex) return;
+  $("gene_name").value = ex.gene_name;
+  $("allele_freq_afr").value = ex.allele_freq_afr;
+  $("af-val").textContent = ex.allele_freq_afr.toFixed(3);
+  $("cadd_score").value = ex.cadd_score;
+  $("cadd-val").textContent = ex.cadd_score.toFixed(1);
+  $("gene_region").value = ex.gene_region;
+  $("conservation_phylop").value = ex.conservation_phylop;
+  $("cons-val").textContent = ex.conservation_phylop.toFixed(1);
+  onGeneChange();
+  submitPrediction();
+}
+
 async function loadModelInfo() {
   try {
     const res = await fetch("/api/model-info");
-    const info = await res.json();
-    document.getElementById("model-type").textContent = `MODEL — ${(info.model_type || "unknown").toUpperCase()}`;
-    document.getElementById("model-auc").textContent = info.auc_all != null ? `AUC — ${Number(info.auc_all).toFixed(3)}` : "AUC — N/A";
-    document.getElementById("model-training").textContent = info.training_variants != null ? `TRAINING SET — ${info.training_variants} VARIANTS` : "TRAINING SET — N/A";
-    if (info.demo_mode) document.getElementById("demo-flag").classList.remove("hidden");
-  } catch (err) {
-    document.getElementById("model-type").textContent = "MODEL — UNREACHABLE";
+    const data = await res.json();
+    const bar = $("status-bar");
+    if (data.demo_mode) {
+      bar.textContent = "⚠ DEMO MODE — synthetic fallback model (real pipeline not yet run)";
+    } else {
+      const m = data.meta || {};
+      bar.textContent = `model: ${m.model_type || "?"} · AUC ${m.auc_all ?? "?"} · n=${m.training_variants ?? "?"}`;
+    }
+  } catch (e) {
+    $("status-bar").textContent = "model-info unavailable";
   }
 }
 
-/* ==========================================================================
-   PREDICTION
-   ========================================================================== */
-async function runPrediction() {
-  const btn = document.getElementById("predict-btn");
-  const errorHint = document.getElementById("error-hint");
-  errorHint.textContent = "";
+async function submitPrediction() {
+  const btn = document.querySelector(".btn-primary");
   btn.disabled = true;
-  btn.textContent = "SCANNING…";
+  btn.textContent = "SCORING…";
+
+  const payload = {
+    gene_name: $("gene_name").value,
+    allele_freq_afr: Number($("allele_freq_afr").value),
+    cadd_score: Number($("cadd_score").value),
+    gene_region: $("gene_region").value,
+    conservation_phylop: Number($("conservation_phylop").value),
+  };
 
   try {
     const res = await fetch("/api/predict", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(state),
+      body: JSON.stringify(payload),
     });
-    if (!res.ok) {
-      const body = await res.json().catch(() => ({}));
-      throw new Error(body.detail ? JSON.stringify(body.detail) : `Request failed (${res.status})`);
-    }
-    const data = await res.json();
-    renderResult(data);
-    applyTierToStructure(data.tier);
-  } catch (err) {
-    errorHint.textContent = `REQUEST FAILED — ${err.message}`;
+    if (!res.ok) throw new Error(await res.text());
+    const result = await res.json();
+    renderResult(result);
+    recolorStructure(result.color);
+  } catch (e) {
+    console.error(e);
+    $("result-empty").textContent = "Prediction failed — check server logs.";
+    $("result-empty").classList.remove("hidden");
+    $("result-body").classList.add("hidden");
   } finally {
     btn.disabled = false;
-    btn.textContent = "RUN PREDICTION →";
+    btn.textContent = "PREDICT PATHOGENICITY →";
   }
 }
 
-function renderResult(data) {
-  document.getElementById("result-empty").classList.add("hidden");
-  const card = document.getElementById("result-card");
-  card.classList.remove("hidden");
+function renderResult(result) {
+  $("result-empty").classList.add("hidden");
+  $("result-body").classList.remove("hidden");
 
-  const stamp = document.getElementById("stamp");
-  stamp.textContent = (data.label || "UNKNOWN").toUpperCase();
-  stamp.className = `stamp tier-${data.tier || "default"}`;
+  const stamp = $("tier-stamp");
+  stamp.textContent = result.tier === "pathogenic" ? "LIKELY PATHOGENIC"
+                     : result.tier === "benign" ? "LIKELY BENIGN"
+                     : "UNCERTAIN / BORDERLINE";
+  stamp.className = "tier-stamp " + result.color;
 
-  document.getElementById("probability-value").textContent = `${data.probability}%`;
-  document.getElementById("probability-bar-fill").style.width = `${data.probability}%`;
+  $("prob-bar-fill").style.width = result.probability + "%";
+  $("prob-label").textContent = `${result.probability}% pathogenic probability` + (result.demo_mode ? "  (demo model)" : "");
 
-  const list = document.getElementById("interpretation-list");
-  list.innerHTML = "";
-  (data.interpretation || []).forEach((line) => {
+  const notesList = $("notes-list");
+  notesList.innerHTML = "";
+  result.notes.forEach(n => {
     const li = document.createElement("li");
-    li.textContent = line;
-    list.appendChild(li);
+    li.textContent = n;
+    notesList.appendChild(li);
   });
 
-  const contribWrap = document.getElementById("contributions");
-  contribWrap.innerHTML = "";
-  (data.contributions || []).forEach((c) => {
-    const row = document.createElement("div");
-    row.className = "contribution-row";
-    const label = document.createElement("div");
-    label.className = "contribution-label";
-    label.innerHTML = `<span>${c.feature}</span><span>${c.push >= 0 ? "+" : ""}${(c.push * 100).toFixed(0)}%</span>`;
-    const track = document.createElement("div");
-    track.className = "contribution-track";
-    const fill = document.createElement("div");
-    fill.className = `contribution-fill${c.push < 0 ? " negative" : ""}`;
-    const pct = Math.min(Math.abs(c.push) * 50, 50);
-    if (c.push >= 0) { fill.style.left = "50%"; fill.style.width = `${pct}%`; }
-    else { fill.style.right = "50%"; fill.style.width = `${pct}%`; }
-    track.appendChild(fill);
-    row.appendChild(label);
-    row.appendChild(track);
-    contribWrap.appendChild(row);
-  });
-}
-
-/* ==========================================================================
-   GENE REGISTRY + STRUCTURE
-   ========================================================================== */
-async function loadGeneRegistry() {
-  try {
-    const res = await fetch("/api/gene-registry");
-    geneRegistry = await res.json();
-  } catch (err) {
-    geneRegistry = {};
-  }
-}
-
-async function refreshGene(geneSymbol) {
-  populatePdbSelect(geneSymbol);
-  const select = document.getElementById("pdb-select");
-  const chosen = select.value;
-  await loadStructureFromSelection(geneSymbol, chosen);
-  await loadHeatmap(geneSymbol);
-}
-
-function populatePdbSelect(geneSymbol) {
-  const select = document.getElementById("pdb-select");
-  select.innerHTML = "";
-  const entry = geneRegistry[geneSymbol];
-
-  if (entry && entry.structures && entry.structures.length > 0) {
-    entry.structures.forEach((s) => {
-      const opt = document.createElement("option");
-      opt.value = JSON.stringify({ source: "pdb", id: s.id, chain: s.chain });
-      opt.textContent = s.label;
-      select.appendChild(opt);
+  const bars = $("contrib-bars");
+  bars.innerHTML = "";
+  result.contributions
+    .slice()
+    .sort((a, b) => Math.abs(b.weight) - Math.abs(a.weight))
+    .forEach(c => {
+      const row = document.createElement("div");
+      row.className = "contrib-row";
+      const w = Math.min(Math.abs(c.weight), 1) * 50;
+      const isNeg = c.weight < 0;
+      row.innerHTML = `
+        <span>${c.feature}</span>
+        <div class="contrib-track">
+          <div class="contrib-fill ${isNeg ? "neg" : ""}"
+               style="left:${isNeg ? 50 - w : 50}%; width:${w}%;"></div>
+        </div>`;
+      bars.appendChild(row);
     });
-  } else if (entry && entry.alphafold_uniprot) {
-    const opt = document.createElement("option");
-    opt.value = JSON.stringify({ source: "alphafold", id: entry.alphafold_uniprot, chain: "A" });
-    opt.textContent = `AlphaFold model — ${entry.alphafold_uniprot} (predicted, no experimental structure)`;
-    select.appendChild(opt);
-  } else {
-    const opt = document.createElement("option");
-    opt.value = JSON.stringify({ source: "pdb", id: "2HHB", chain: "B" });
-    opt.textContent = "2HHB — reference (no structure mapped for this gene)";
-    select.appendChild(opt);
-  }
 }
 
-function onPdbSelectChange() {
-  const select = document.getElementById("pdb-select");
-  loadStructureFromSelection(state.gene_name, select.value);
+/* ── Structure panel ───────────────────────────────────────────── */
+
+async function onGeneChange() {
+  const gene = $("gene_name").value;
+  try {
+    const res = await fetch(`/api/structure/${gene}`);
+    if (!res.ok) {
+      $("struct-label").textContent = `No structure registered for ${gene}`;
+      return;
+    }
+    const info = await res.json();
+    $("struct-label").textContent =
+      `${info.pdb_id} · chain ${info.chain} · ${info.source === "alphafold" ? "AlphaFold (predicted)" : "experimental"} — ${info.label}`;
+    loadStructure(info.pdb_id, info.chain);
+  } catch (e) {
+    console.error(e);
+  }
+  loadHeatmap(gene);
 }
 
 function initViewer() {
-  const el = document.getElementById("viewer");
-  viewer = $3Dmol.createViewer(el, { backgroundColor: "white" });
+  state.viewer = $3Dmol.createViewer($("viewer"), { backgroundColor: "0x0e0e0e" });
 }
 
-async function loadStructureFromSelection(geneSymbol, selectionJson) {
-  let sel;
-  try { sel = JSON.parse(selectionJson); } catch (e) { return; }
+function loadStructure(pdbId, chain) {
+  state.viewer.clear();
+  state.currentPdbId = pdbId;
+  $3Dmol.download(`pdb:${pdbId}`, state.viewer, {}, () => {
+    state.viewer.setStyle({}, { cartoon: { color: "spectrum" } });
+    if (chain) {
+      state.viewer.setStyle({ chain: chain }, { cartoon: { color: "orange" } });
+    }
+    state.viewer.zoomTo();
+    state.viewer.render();
+    state.currentPdbData = state.viewer.exportJSON ? null : null; // placeholder for download
+  });
+}
 
-  document.getElementById("pdb-id").textContent = sel.source === "pdb" ? `PDB ${sel.id}` : `ALPHAFOLD ${sel.id}`;
-  document.getElementById("pdb-chain").textContent = sel.chain;
-  document.getElementById("pdb-note").textContent = sel.source === "pdb"
-    ? `Experimental structure, chain ${sel.chain}`
-    : `Predicted model (AlphaFold), UniProt ${sel.id}`;
-
-  viewer.clear();
-  currentPdbId = sel.id;
-  currentPdbText = null;
-
-  const url = sel.source === "pdb"
-    ? `https://files.rcsb.org/download/${sel.id}.pdb`
-    : `https://alphafold.ebi.ac.uk/files/AF-${sel.id}-F1-model_v4.pdb`;
-
-  try {
-    const r = await fetch(url);
-    const pdbText = await r.text();
-    viewer.addModel(pdbText, "pdb");
-    currentPdbText = pdbText;
-    viewer.setStyle({}, { cartoon: { color: "grey", opacity: 0.35 } });
-    viewer.setStyle({ chain: sel.chain }, { cartoon: { color: "#D1301F", opacity: 1.0 } });
-    viewer.zoomTo();
-    viewer.render();
-  } catch (err) {
-    document.getElementById("pdb-note").textContent = "Structure unavailable — network blocked or model not found";
+function recolorStructure(color) {
+  if (!state.viewer || !state.currentPdbId) return;
+  const chain = $("struct-label").textContent.split("chain ")[1]?.split(" ")[0];
+  const tierColor = color === "high" ? "0x8B1A1A" : color === "medium" ? "0x7A5C00" : "0x0F5E3A";
+  if (chain) {
+    state.viewer.setStyle({ chain: chain }, { cartoon: { color: tierColor } });
+    state.viewer.render();
   }
 }
 
-function applyTierToStructure(tier) {
-  if (!viewer) return;
-  const entry = geneRegistry[state.gene_name];
-  const chain = (entry && entry.structures && entry.structures[0]) ? entry.structures[0].chain : "A";
-  const colorMap = { high: "#D1301F", medium: "#B5790A", low: "#1F6B44" };
-  viewer.setStyle({ chain: chain }, { cartoon: { color: colorMap[tier] || "#D1301F", opacity: 1.0 } });
-  viewer.render();
+function resetViewer() {
+  if (!state.viewer) return;
+  state.viewer.zoomTo();
+  state.viewer.render();
 }
 
 function downloadStructure() {
-  if (!currentPdbText || !currentPdbId) return;
-  const blob = new Blob([currentPdbText], { type: "chemical/x-pdb" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `${currentPdbId}.pdb`;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
+  if (!state.currentPdbId) return;
+  window.open(`https://files.rcsb.org/download/${state.currentPdbId}.pdb`, "_blank");
 }
 
-/* ==========================================================================
-   SUBSTITUTION MATRIX (precomputed ESM2 masked-marginal scores)
-   ========================================================================== */
-async function loadHeatmap(geneSymbol) {
-  const panel = document.getElementById("matrix-panel");
+/* ── Substitution matrix panel (03) ───────────────────────────── */
+
+async function loadHeatmap(gene) {
+  const panel = $("panel-matrix");
   try {
-    const res = await fetch(`/api/heatmap/${geneSymbol}`);
-    if (!res.ok) {
-      heatmapData = null;
-      panel.classList.add("hidden");
-      return;
-    }
-    heatmapData = await res.json();
+    const res = await fetch(`/api/heatmap/${gene}`);
+    if (!res.ok) { panel.classList.add("hidden"); return; }
+    const data = await res.json();
+    renderMatrix(data);
     panel.classList.remove("hidden");
-    document.getElementById("matrix-sub").textContent = `${heatmapData.model || "ESM2"} ZERO-SHOT — CLICK A COLUMN`;
-    drawMatrix();
-  } catch (err) {
-    heatmapData = null;
+  } catch (e) {
     panel.classList.add("hidden");
   }
 }
 
-function heatColor(t) {
-  t = Math.max(0, Math.min(1, t));
-  const seg = t * (HEAT_STOPS.length - 1);
-  const idx = Math.min(Math.floor(seg), HEAT_STOPS.length - 2);
-  const frac = seg - idx;
-  const c1 = hexToRgb(HEAT_STOPS[idx]);
-  const c2 = hexToRgb(HEAT_STOPS[idx + 1]);
-  const r = Math.round(c1.r + (c2.r - c1.r) * frac);
-  const g = Math.round(c1.g + (c2.g - c1.g) * frac);
-  const b = Math.round(c1.b + (c2.b - c1.b) * frac);
-  return `rgb(${r},${g},${b})`;
-}
-function hexToRgb(hex) {
-  const n = parseInt(hex.slice(1), 16);
-  return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
-}
+function renderMatrix(data) {
+  // Expected shape: { gene, positions: [{pos, wt, scores: {A: -1.2, C: -3.4, ...}}, ...] }
+  const AA = "ACDEFGHIKLMNPQRSTVWY".split("");
+  const container = $("matrix-scroll");
+  container.innerHTML = "";
+  const table = document.createElement("table");
+  table.className = "matrix-table";
 
-function drawMatrix() {
-  if (!heatmapData) return;
-  const positions = heatmapData.positions;
-  const cols = positions.length;
-  const rows = ROW_ORDER.length;
+  const headRow = document.createElement("tr");
+  headRow.innerHTML = "<th></th>" + data.positions.map(p => `<th>${p.pos}</th>`).join("");
+  table.appendChild(headRow);
 
-  let min = Infinity, max = -Infinity;
-  positions.forEach((p) => ROW_ORDER.forEach((aa) => {
-    const v = p.effects[aa];
-    if (v != null) { if (v < min) min = v; if (v > max) max = v; }
-  }));
-  document.getElementById("legend-min").textContent = min.toFixed(1);
-  document.getElementById("legend-max").textContent = max.toFixed(1);
+  AA.forEach(aa => {
+    const row = document.createElement("tr");
+    let cells = `<th>${aa}</th>`;
+    data.positions.forEach(p => {
+      const score = p.scores[aa];
+      const color = scoreToColor(score);
+      cells += `<td class="matrix-cell" style="background:${color}" data-pos="${p.pos}"></td>`;
+    });
+    row.innerHTML = cells;
+    table.appendChild(row);
+  });
 
-  // main heat canvas
-  const canvas = document.getElementById("matrix-canvas");
-  canvas.width = cols * CELL_W;
-  canvas.height = rows * CELL_H;
-  const ctx = canvas.getContext("2d");
-  for (let c = 0; c < cols; c++) {
-    const effects = positions[c].effects;
-    for (let r = 0; r < rows; r++) {
-      const v = effects[ROW_ORDER[r]];
-      const t = v == null ? 0 : (v - min) / (max - min || 1);
-      ctx.fillStyle = v == null ? "#DDDAD0" : heatColor(t);
-      ctx.fillRect(c * CELL_W, r * CELL_H, CELL_W, CELL_H);
-    }
-  }
-
-  // row labels (amino acids)
-  const rowCanvas = document.getElementById("matrix-row-labels");
-  rowCanvas.width = 24;
-  rowCanvas.height = rows * CELL_H;
-  const rctx = rowCanvas.getContext("2d");
-  rctx.fillStyle = "#FFFFFF";
-  rctx.fillRect(0, 0, rowCanvas.width, rowCanvas.height);
-  rctx.font = "9px 'IBM Plex Mono', monospace";
-  rctx.fillStyle = "#121210";
-  rctx.textAlign = "center";
-  rctx.textBaseline = "middle";
-  ROW_ORDER.forEach((aa, r) => rctx.fillText(aa, 12, r * CELL_H + CELL_H / 2));
-
-  // column labels (positions, every Nth)
-  const colCanvas = document.getElementById("matrix-col-labels");
-  colCanvas.width = cols * CELL_W;
-  colCanvas.height = 22;
-  const cctx = colCanvas.getContext("2d");
-  cctx.fillStyle = "#FFFFFF";
-  cctx.fillRect(0, 0, colCanvas.width, colCanvas.height);
-  cctx.font = "8px 'IBM Plex Mono', monospace";
-  cctx.fillStyle = "#4A4842";
-  const step = Math.max(1, Math.ceil(cols / 60));
-  for (let c = 0; c < cols; c += step) {
-    cctx.save();
-    cctx.translate(c * CELL_W + CELL_W / 2, 20);
-    cctx.rotate(-Math.PI / 2);
-    cctx.textAlign = "left";
-    cctx.fillText(String(positions[c].pos), 0, 0);
-    cctx.restore();
-  }
-
-  canvas.onclick = (e) => {
-    const rect = canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const col = Math.floor(x / CELL_W);
-    if (col >= 0 && col < cols) populateMatrixTable(positions[col]);
-  };
-}
-
-function populateMatrixTable(position) {
-  document.getElementById("matrix-table-pos").textContent = `— ${position.wt}${position.pos}`;
-  const body = document.getElementById("matrix-table-body");
-  body.innerHTML = "";
-
-  let min = Infinity, max = -Infinity;
-  Object.values(position.effects).forEach((v) => { if (v < min) min = v; if (v > max) max = v; });
-
-  const rows = Object.keys(position.effects)
-    .map((aa) => ({ aa, v: position.effects[aa] }))
-    .sort((a, b) => a.v - b.v);
-
-  rows.forEach(({ aa, v }) => {
-    const tr = document.createElement("tr");
-    const t = (v - min) / (max - min || 1);
-    tr.innerHTML = `
-      <td>${position.wt}</td>
-      <td>${position.pos}</td>
-      <td>${aa}${aa === position.wt ? " (=WT)" : ""}</td>
-      <td><span class="effect-swatch" style="background:${heatColor(t)}"></span>${v.toFixed(2)}</td>
-    `;
-    body.appendChild(tr);
+  container.appendChild(table);
+  container.querySelectorAll(".matrix-cell").forEach(cell => {
+    cell.addEventListener("click", () => showColumnDetail(data, Number(cell.dataset.pos)));
   });
 }
+
+function scoreToColor(score) {
+  // score near 0 = tolerated (light), very negative = disfavored (dark red)
+  const clamped = Math.max(-10, Math.min(0, score));
+  const t = (clamped + 10) / 10; // 0 (bad) -> 1 (neutral)
+  const r = Math.round(139 + (255 - 139) * t);
+  const g = Math.round(26 + (255 - 26) * t);
+  const b = Math.round(26 + (255 - 26) * t);
+  return `rgb(${r},${g},${b})`;
+}
+
+function showColumnDetail(data, pos) {
+  const posData = data.positions.find(p => p.pos === pos);
+  if (!posData) return;
+  const detail = $("matrix-detail");
+  detail.classList.remove("hidden");
+  const rows = Object.entries(posData.scores)
+    .sort((a, b) => a[1] - b[1])
+    .map(([aa, s]) => `<tr><td>${posData.wt}${pos}${aa}</td><td>${s.toFixed(2)}</td></tr>`)
+    .join("");
+  detail.innerHTML = `<div class="sub-title">position ${pos} (WT ${posData.wt}) — ranked substitutions</div>
+    <table class="matrix-table"><tr><th>mutation</th><th>score</th></tr>${rows}</table>`;
+}
+
+/* ── Wire up ───────────────────────────────────────────────────── */
+
+document.addEventListener("DOMContentLoaded", () => {
+  initSliders();
+  initViewer();
+  loadModelInfo();
+  onGeneChange();
+
+  $("variant-form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    submitPrediction();
+  });
+
+  $("gene_name").addEventListener("change", onGeneChange);
+  $("btn-reset").addEventListener("click", resetViewer);
+  $("btn-download").addEventListener("click", downloadStructure);
+
+  document.querySelectorAll(".chip").forEach(chip => {
+    chip.addEventListener("click", () => applyExample(chip.dataset.ex));
+  });
+});

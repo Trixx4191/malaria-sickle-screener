@@ -1,118 +1,72 @@
 """
-main.py — FastAPI backend for the West Africa Variant Screener.
+main.py — FastAPI backend for the West Africa Variant Screener web UI.
 
-Run locally:
+Run:
     uvicorn webapp.main:app --reload --port 8000
-
-Deploy to Hugging Face Spaces (Docker SDK):
-    See ../Dockerfile — the Space builds this image and exposes port 7860.
+    open http://localhost:8000
 """
 
+import json
+import sys
 from pathlib import Path
-from typing import Literal
 
 from fastapi import FastAPI, HTTPException
-
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from .model_service import service
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from webapp.model_service import ModelService
+
+ROOT = Path(__file__).resolve().parents[1]
+HEATMAPS_DIR = ROOT / "data" / "heatmaps"
+STATIC_DIR = Path(__file__).resolve().parent / "static"
+
+app = FastAPI(title="West Africa Variant Screener")
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+
+service = ModelService()
 
 
-HEATMAP_DIR = Path(__file__).resolve().parent.parent / "data" / "heatmaps"
-
-app = FastAPI(title="West Africa Variant Screener API")
-
-
-# Reference metadata for the genes this tool covers. `structures` lists real
-# deposited PDB entries where one exists; `alphafold_uniprot` is used as a
-# fallback (clearly labeled as a predicted model, not an experimental one)
-# for targets with no experimental structure, e.g. DARC/ACKR1 (a GPCR).
-GENE_REGISTRY = {
-    "HBB": {
-        "uniprot": "P68871",
-        "structures": [
-            {"id": "2HHB", "chain": "B", "label": "2HHB — deoxyhemoglobin (T state)"},
-            {"id": "1HHO", "chain": "B", "label": "1HHO — oxyhemoglobin (R state)"},
-        ],
-    },
-    "HBA1": {
-        "uniprot": "P69905",
-        "structures": [
-            {"id": "2HHB", "chain": "A", "label": "2HHB — deoxyhemoglobin (T state)"},
-            {"id": "1HHO", "chain": "A", "label": "1HHO — oxyhemoglobin (R state)"},
-        ],
-    },
-    "HBA2": {
-        "uniprot": "P69905",
-        "structures": [
-            {"id": "2HHB", "chain": "C", "label": "2HHB — deoxyhemoglobin (T state)"},
-            {"id": "1HHO", "chain": "C", "label": "1HHO — oxyhemoglobin (R state)"},
-        ],
-    },
-    "G6PD": {
-        "uniprot": "P11413",
-        "structures": [
-            {"id": "2BH9", "chain": "A", "label": "2BH9 — human G6PD dimer"},
-        ],
-    },
-    "DARC": {
-        "uniprot": "Q16570",
-        "structures": [],
-        "alphafold_uniprot": "Q16570",
-    },
-}
-
-
-class VariantInput(BaseModel):
+class PredictRequest(BaseModel):
     allele_freq_afr: float = Field(ge=0.0, le=1.0)
     cadd_score: float = Field(ge=0.0, le=60.0)
-    gene_region: Literal["Exonic (coding)", "UTR (untranslated)", "Intronic / other"]
-    conservation_phylop: float = Field(ge=-3.0, le=3.0)
-    gene_name: str = "HBB"
+    gene_region: str  # "exonic" | "utr" | "intronic"
+    conservation_phylop: float = Field(ge=-5.0, le=5.0)
+    gene_name: str
 
 
 @app.get("/api/model-info")
 def model_info():
-    return service.info()
+    return service.model_info()
 
 
 @app.post("/api/predict")
-def predict(payload: VariantInput):
+def predict(req: PredictRequest):
     return service.predict(
-        allele_freq_afr=payload.allele_freq_afr,
-        cadd_score=payload.cadd_score,
-        gene_region=payload.gene_region,
-        conservation_phylop=payload.conservation_phylop,
-        gene_name=payload.gene_name,
+        allele_freq_afr=req.allele_freq_afr,
+        cadd_score=req.cadd_score,
+        gene_region=req.gene_region,
+        conservation_phylop=req.conservation_phylop,
+        gene_name=req.gene_name,
     )
 
 
-@app.get("/api/gene-registry")
-def gene_registry():
-    """Known genes with UniProt accession + available real/AlphaFold structures."""
-    return GENE_REGISTRY
+@app.get("/api/structure/{gene}")
+def structure(gene: str):
+    info = service.structure_for(gene)
+    if info is None:
+        raise HTTPException(status_code=404, detail=f"No structure registered for gene '{gene}'")
+    return info
 
 
 @app.get("/api/heatmap/{gene}")
 def heatmap(gene: str):
-    """
-    Serve a precomputed per-position x per-substitution effect matrix
-    (ESM2 zero-shot masked-marginal scores — see scripts/compute_heatmap.py).
-
-    Returns 404 if the gene has no cached heatmap yet; the frontend treats
-    that as "no matrix available" and hides the panel rather than faking data.
-    """
-    path = HEATMAP_DIR / f"{gene.upper()}.json"
+    path = HEATMAPS_DIR / f"{gene.strip().upper()}.json"
     if not path.exists():
-        raise HTTPException(status_code=404, detail=f"No heatmap cached for gene '{gene}'. Run scripts/compute_heatmap.py first.")
-    import json
-    return json.loads(path.read_text())
+        raise HTTPException(status_code=404, detail="Heatmap not precomputed for this gene yet")
+    with open(path) as f:
+        return json.load(f)
 
 
-
-
-
-if __name__ == "__main__":
-
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=7860)
+app.mount("/", StaticFiles(directory=str(STATIC_DIR), html=True), name="static")
