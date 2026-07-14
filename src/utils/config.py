@@ -28,6 +28,9 @@ NCBI_EMAIL    = os.getenv("NCBI_EMAIL", "")
 HF_TOKEN      = os.getenv("HF_TOKEN", "")
 HF_USERNAME   = os.getenv("HF_USERNAME", "")
 CADD_API_BASE = os.getenv("CADD_API_BASE", "https://cadd.gs.washington.edu/api/v1.0/")
+# CADD's API requires a genome-build+version path segment, e.g. .../api/v1.0/GRCh38-v1.7/11:5227002_A_T
+# Available: v1.0-v1.3, GRCh37-v1.4, GRCh38-v1.4, GRCh38-v1.5, GRCh37-v1.6, GRCh38-v1.6, GRCh37-v1.7, GRCh38-v1.7
+CADD_VERSION = os.getenv("CADD_VERSION", "GRCh38-v1.7")
 GNOMAD_API    = os.getenv("GNOMAD_API", "https://gnomad.broadinstitute.org/api")
 
 # ─── Data source URLs ─────────────────────────────────────────────────────────
