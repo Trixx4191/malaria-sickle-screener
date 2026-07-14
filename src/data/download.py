@@ -22,7 +22,7 @@ from tqdm import tqdm
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from src.utils.config import (
-    CLINVAR_URL, KG_PANEL_URL, CADD_API_BASE, GNOMAD_API,
+    CLINVAR_URL, KG_PANEL_URL, CADD_API_BASE, CADD_VERSION, GNOMAD_API,
     DATA_RAW, DATA_EXTERNAL, NCBI_API_KEY, NCBI_EMAIL,
     TARGET_GENES, CADD_CACHE
 )
@@ -109,17 +109,26 @@ def fetch_cadd_scores(variants: list[dict]) -> dict:
         with open(CADD_CACHE) as f:
             cache = json.load(f)
 
-    results = dict(cache)
+    # Only pre-populate results with successful cache hits. A cached None
+    # means an earlier run failed to resolve that variant (bad URL, 404,
+    # rate limit, etc) — that's not a real answer, so retry it rather than
+    # treating "we don't know" as a permanently cached verdict.
+    stale_none_count = sum(1 for v in cache.values() if v is None)
+    if stale_none_count:
+        print(f"  Ignoring {stale_none_count} cached null result(s) — will retry them.")
+    results = {k: v for k, v in cache.items() if v is not None}
     new_fetches = 0
     consecutive_failures = 0
+    consecutive_404s = 0
 
     for v in tqdm(variants, desc="CADD API"):
         key = f"{v['chr']}-{v['pos']}-{v['ref']}-{v['alt']}"
         if key in results:
             continue
 
-        url = f"{CADD_API_BASE}{v['chr']}:{v['pos']}_{v['ref']}_{v['alt']}"
+        url = f"{CADD_API_BASE}{CADD_VERSION}/{v['chr']}:{v['pos']}_{v['ref']}_{v['alt']}"
         score = None
+        was_404 = False
         for attempt in range(5):
             try:
                 resp = requests.get(url, timeout=10)
@@ -128,6 +137,17 @@ def fetch_cadd_scores(variants: list[dict]) -> dict:
                     wait = float(retry_after) if retry_after else min(60, 2 ** attempt * 3)
                     time.sleep(wait)
                     continue
+                if resp.status_code == 404:
+                    was_404 = True
+                    if new_fetches == 0 and consecutive_failures < 3:
+                        # print the raw response for the first few failures only,
+                        # so we can see the real cause without flooding the log
+                        print(f"\n  [debug] {url} -> 404. Body: {resp.text[:200]!r}")
+                    break  # not found is not retryable — variant genuinely absent, or URL is wrong
+                if resp.status_code != 200:
+                    if new_fetches == 0 and consecutive_failures < 3:
+                        print(f"\n  [debug] {url} -> {resp.status_code}. Body: {resp.text[:200]!r}")
+                    break
                 resp.raise_for_status()
                 data = resp.json()
                 raw = data[1][5] if len(data) > 1 else None
@@ -142,15 +162,26 @@ def fetch_cadd_scores(variants: list[dict]) -> dict:
         results[key] = score  # None if genuinely unresolvable — never faked
         if score is None:
             consecutive_failures += 1
+            consecutive_404s = consecutive_404s + 1 if was_404 else 0
+            if consecutive_404s >= 15:
+                print("\n" + "!" * 60)
+                print(f"CADD API returned 404 for {consecutive_404s} lookups in a row.")
+                print("This is NOT rate-limiting — it means the request URL itself is")
+                print(f"wrong (check CADD_VERSION='{CADD_VERSION}' is a real CADD release)")
+                print("or these variants genuinely aren't in CADD's precomputed set.")
+                print("Fix the URL/version before re-running, or fetching will keep 404ing.")
+                print("!" * 60)
+                break
             if consecutive_failures >= 15:
                 print("\n" + "!" * 60)
                 print(f"CADD API has failed {consecutive_failures} lookups in a row —")
-                print("likely persistently rate-limited. Stopping instead of continuing")
-                print("to hammer it. Already-fetched scores are cached.")
+                print("likely persistently rate-limited or unreachable. Stopping instead")
+                print("of continuing to hammer it. Already-fetched scores are cached.")
                 print("!" * 60)
                 break
         else:
             consecutive_failures = 0
+            consecutive_404s = 0
             new_fetches += 1
             time.sleep(1.0)   # respect rate limit
 
