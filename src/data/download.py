@@ -150,7 +150,13 @@ def fetch_cadd_scores(variants: list[dict]) -> dict:
                     break
                 resp.raise_for_status()
                 data = resp.json()
-                raw = data[1][5] if len(data) > 1 else None
+                if not data:
+                    if new_fetches == 0 and consecutive_failures < 3:
+                        print(f"\n  [debug] {url} -> 200 but empty list (CADD has no score for this exact ref/alt).")
+                    break
+                # Single-SNV endpoint returns [{"Chrom":.., "Ref":.., "Alt":.., "PHRED":..}]
+                # — a list of ONE dict, not a list-of-lists like the range endpoint.
+                raw = data[0].get("PHRED") if isinstance(data[0], dict) else None
                 score = float(raw) if raw is not None else None
                 break
             except (requests.exceptions.Timeout, requests.exceptions.ConnectionError):
