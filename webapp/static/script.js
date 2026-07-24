@@ -2,16 +2,24 @@ const $ = (id) => document.getElementById(id);
 
 const state = {
   viewer: null,
-  currentPdbData: null,
   currentPdbId: null,
+  currentChain: null,
+  currentTierColor: null,
+  currentResidue: null,
 };
 
+// Residue positions below are well-documented textbook variants (HbS/HbC at
+// β-globin codon 6; G6PD A- and G6PD Mediterranean at their established
+// positions) — not invented for this demo. gene_region/cadd/etc. are still
+// illustrative slider presets, but the residue identity itself is real.
 const EXAMPLES = {
-  "hbs":          { gene_name: "HBB",  allele_freq_afr: 0.004, cadd_score: 34.0, gene_region: "exonic",   conservation_phylop: 2.1 },
-  "hbb-path":     { gene_name: "HBB",  allele_freq_afr: 0.001, cadd_score: 28.0, gene_region: "exonic",   conservation_phylop: 1.8 },
-  "g6pd-benign":  { gene_name: "G6PD", allele_freq_afr: 0.420, cadd_score: 3.0,  gene_region: "intronic", conservation_phylop: -0.5 },
-  "g6pd-rare":    { gene_name: "G6PD", allele_freq_afr: 0.000, cadd_score: 42.0, gene_region: "exonic",   conservation_phylop: 2.8 },
+  "hbs":          { gene_name: "HBB",  allele_freq_afr: 0.004, cadd_score: 34.0, gene_region: "exonic",   conservation_phylop: 2.1, residue: 6,   wt: "GLU", mut: "VAL", note: "HbS — Glu6Val (rs334)" },
+  "hbb-path":     { gene_name: "HBB",  allele_freq_afr: 0.001, cadd_score: 28.0, gene_region: "exonic",   conservation_phylop: 1.8, residue: 6,   wt: "GLU", mut: "LYS", note: "HbC — Glu6Lys" },
+  "g6pd-benign":  { gene_name: "G6PD", allele_freq_afr: 0.420, cadd_score: 3.0,  gene_region: "intronic", conservation_phylop: -0.5, residue: 68,  wt: "VAL", mut: "MET", note: "G6PD A- — Val68Met" },
+  "g6pd-rare":    { gene_name: "G6PD", allele_freq_afr: 0.000, cadd_score: 42.0, gene_region: "exonic",   conservation_phylop: 2.8, residue: 188, wt: "SER", mut: "PHE", note: "G6PD Mediterranean — Ser188Phe" },
 };
+
+const AA3 = { GLU: "E", VAL: "V", LYS: "K", MET: "M", SER: "S", PHE: "F" };
 
 function initSliders() {
   const af = $("allele_freq_afr"), afVal = $("af-val");
@@ -35,7 +43,8 @@ function applyExample(key) {
   $("gene_region").value = ex.gene_region;
   $("conservation_phylop").value = ex.conservation_phylop;
   $("cons-val").textContent = ex.conservation_phylop.toFixed(1);
-  onGeneChange();
+  $("residue_number").value = ex.residue;
+  onGeneChange().then(() => highlightResidue(ex.residue, ex.wt, ex.mut, ex.note));
   submitPrediction();
 }
 
@@ -144,6 +153,9 @@ function renderResult(result) {
 
 async function onGeneChange() {
   const gene = $("gene_name").value;
+  state.currentResidue = null;
+  $("residue-readout").classList.add("hidden");
+  $("btn-zoom-residue").classList.add("hidden");
   try {
     const res = await fetch(`/api/structure/${gene}`);
     if (!res.ok) {
@@ -153,7 +165,7 @@ async function onGeneChange() {
     const info = await res.json();
     $("struct-label").textContent =
       `${info.pdb_id} · chain ${info.chain} · ${info.source === "alphafold" ? "AlphaFold (predicted)" : "experimental"} — ${info.label}`;
-    loadStructure(info.pdb_id, info.chain);
+    await loadStructure(info.pdb_id, info.chain);
   } catch (e) {
     console.error(e);
   }
@@ -167,31 +179,103 @@ function initViewer() {
 function loadStructure(pdbId, chain) {
   state.viewer.clear();
   state.currentPdbId = pdbId;
-  $3Dmol.download(`pdb:${pdbId}`, state.viewer, {}, () => {
-    state.viewer.setStyle({}, { cartoon: { color: "spectrum" } });
-    if (chain) {
-      state.viewer.setStyle({ chain: chain }, { cartoon: { color: "orange" } });
-    }
-    state.viewer.zoomTo();
-    state.viewer.render();
-    state.currentPdbData = state.viewer.exportJSON ? null : null; // placeholder for download
+  state.currentChain = chain;
+  state.currentTierColor = null;
+  return new Promise((resolve) => {
+    $3Dmol.download(`pdb:${pdbId}`, state.viewer, {}, () => {
+      applyAllStyles();
+      state.viewer.zoomTo();
+      state.viewer.render();
+      resolve();
+    });
   });
+}
+
+/**
+ * Single source of truth for what the structure looks like: base spectrum
+ * cartoon, an optional tier-colored tint on the relevant chain (set after a
+ * prediction), and an optional highlighted residue (set from an example or
+ * the manual residue field). Re-run this any time either input changes,
+ * rather than patching styles incrementally — avoids one setStyle() call
+ * silently wiping out another.
+ */
+function applyAllStyles() {
+  if (!state.viewer) return;
+  state.viewer.setStyle({}, { cartoon: { color: "spectrum" } });
+
+  if (state.currentChain) {
+    const chainColor = state.currentTierColor || "orange";
+    state.viewer.setStyle({ chain: state.currentChain }, { cartoon: { color: chainColor } });
+  }
+
+  state.viewer.removeAllLabels();
+  if (state.currentResidue && state.currentChain) {
+    const { pos, note } = state.currentResidue;
+    const sel = { chain: state.currentChain, resi: pos };
+    state.viewer.setStyle(sel, {
+      cartoon: { color: state.currentTierColor || "orange" },
+      stick: { colorscheme: "yellowCarbon", radius: 0.28 },
+      sphere: { scale: 0.35, color: "yellow" },
+    });
+
+    // addLabel needs a concrete {x,y,z}, not a selector — pull it from the
+    // residue's alpha carbon (falling back to any atom in the residue).
+    let atoms = state.viewer.selectedAtoms({ ...sel, atom: "CA" });
+    if (!atoms.length) atoms = state.viewer.selectedAtoms(sel);
+    if (atoms.length) {
+      const a = atoms[0];
+      state.viewer.addLabel(note || `residue ${pos}`, {
+        position: { x: a.x, y: a.y, z: a.z },
+        backgroundColor: "0x0e0e0e",
+        backgroundOpacity: 0.75,
+        fontColor: "0xffffff",
+        fontSize: 12,
+        borderThickness: 0,
+      });
+    }
+  }
+  state.viewer.render();
+}
+
+function highlightResidue(pos, wt, mut, note) {
+  if (!state.viewer || !state.currentChain) return;
+  state.currentResidue = { pos, wt, mut, note };
+  applyAllStyles();
+
+  const readout = $("residue-readout");
+  readout.classList.remove("hidden");
+  const wtLabel = wt ? `${wt}${AA3[wt] ? ` (${AA3[wt]})` : ""}` : null;
+  const mutLabel = mut ? `${mut}${AA3[mut] ? ` (${AA3[mut]})` : ""}` : null;
+  readout.innerHTML = `<b>residue ${pos}</b>${wtLabel && mutLabel ? ` — ${wtLabel} → ${mutLabel}` : ""}${note ? `<br/>${note}` : ""}`;
+  $("btn-zoom-residue").classList.remove("hidden");
+
+  zoomToResidue();
+}
+
+function zoomToResidue() {
+  if (!state.viewer || !state.currentResidue || !state.currentChain) return;
+  state.viewer.zoomTo({ chain: state.currentChain, resi: state.currentResidue.pos });
+  state.viewer.zoom(0.4, 600);  // pull back slightly from an extreme close-up
+  state.viewer.render();
 }
 
 function recolorStructure(color) {
   if (!state.viewer || !state.currentPdbId) return;
-  const chain = $("struct-label").textContent.split("chain ")[1]?.split(" ")[0];
   const tierColor = color === "high" ? "0x8B1A1A" : color === "medium" ? "0x7A5C00" : "0x0F5E3A";
-  if (chain) {
-    state.viewer.setStyle({ chain: chain }, { cartoon: { color: tierColor } });
-    state.viewer.render();
-  }
+  state.currentTierColor = tierColor;
+  applyAllStyles();
 }
 
 function resetViewer() {
   if (!state.viewer) return;
   state.viewer.zoomTo();
   state.viewer.render();
+}
+
+function readManualResidue() {
+  const val = Number($("residue_number").value);
+  if (!val || val < 1) return;
+  highlightResidue(val, null, null, `manually selected residue ${val}`);
 }
 
 function downloadStructure() {
@@ -283,6 +367,8 @@ document.addEventListener("DOMContentLoaded", () => {
   $("gene_name").addEventListener("change", onGeneChange);
   $("btn-reset").addEventListener("click", resetViewer);
   $("btn-download").addEventListener("click", downloadStructure);
+  $("btn-zoom-residue").addEventListener("click", zoomToResidue);
+  $("residue_number").addEventListener("change", readManualResidue);
 
   document.querySelectorAll(".chip").forEach(chip => {
     chip.addEventListener("click", () => applyExample(chip.dataset.ex));

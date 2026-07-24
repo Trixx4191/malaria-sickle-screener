@@ -204,7 +204,19 @@ input[type="range"] { accent-color: var(--ink); }
   background: #0e0e0e;
   position: relative;
 }
-.struct-buttons { display: flex; gap: 0.5rem; margin-top: 0.75rem; }
+.struct-buttons { display: flex; gap: 0.5rem; margin-top: 0.75rem; flex-wrap: wrap; }
+
+.residue-readout {
+  margin-top: 0.6rem;
+  padding: 0.6rem 0.75rem;
+  background: #fdf6ec;
+  border: 1px solid #e8dcc5;
+  border-radius: 4px;
+  font-size: 0.72rem;
+  line-height: 1.6;
+  color: #4a3b1f;
+}
+.residue-readout b { color: var(--high); }
 
 /* Footer */
 footer {
