@@ -118,8 +118,8 @@ def fetch_cadd_scores(variants: list[dict]) -> dict:
         print(f"  Ignoring {stale_none_count} cached null result(s) — will retry them.")
     results = {k: v for k, v in cache.items() if v is not None}
     new_fetches = 0
-    consecutive_failures = 0
-    consecutive_404s = 0
+    no_data_count = 0          # legitimate "CADD has no score for this" — not a failure
+    consecutive_api_failures = 0  # genuine transport/API problems only
 
     for v in tqdm(variants, desc="CADD API"):
         key = f"{v['chr']}-{v['pos']}-{v['ref']}-{v['alt']}"
@@ -128,7 +128,8 @@ def fetch_cadd_scores(variants: list[dict]) -> dict:
 
         url = f"{CADD_API_BASE}{CADD_VERSION}/{v['chr']}:{v['pos']}_{v['ref']}_{v['alt']}"
         score = None
-        was_404 = False
+        api_failed = False  # did the API itself misbehave, vs. give a valid "no data" answer?
+
         for attempt in range(5):
             try:
                 resp = requests.get(url, timeout=10)
@@ -136,22 +137,22 @@ def fetch_cadd_scores(variants: list[dict]) -> dict:
                     retry_after = resp.headers.get("Retry-After")
                     wait = float(retry_after) if retry_after else min(60, 2 ** attempt * 3)
                     time.sleep(wait)
+                    if attempt == 4:
+                        api_failed = True  # retries exhausted while still being rate-limited
                     continue
                 if resp.status_code == 404:
-                    was_404 = True
-                    if new_fetches == 0 and consecutive_failures < 3:
-                        # print the raw response for the first few failures only,
-                        # so we can see the real cause without flooding the log
-                        print(f"\n  [debug] {url} -> 404. Body: {resp.text[:200]!r}")
-                    break  # not found is not retryable — variant genuinely absent, or URL is wrong
-                if resp.status_code != 200:
-                    if new_fetches == 0 and consecutive_failures < 3:
-                        print(f"\n  [debug] {url} -> {resp.status_code}. Body: {resp.text[:200]!r}")
+                    # A "not found" for a well-formed query is CADD telling us it has
+                    # no record here (bad ref/alt, unsupported indel, etc) — not an outage.
+                    if no_data_count < 3:
+                        print(f"\n  [debug] {url} -> 404 (no CADD record for this variant).")
                     break
-                resp.raise_for_status()
+                if resp.status_code != 200:
+                    api_failed = True
+                    print(f"\n  [debug] {url} -> {resp.status_code}. Body: {resp.text[:200]!r}")
+                    break
                 data = resp.json()
                 if not data:
-                    if new_fetches == 0 and consecutive_failures < 3:
+                    if no_data_count < 3:
                         print(f"\n  [debug] {url} -> 200 but empty list (CADD has no score for this exact ref/alt).")
                     break
                 # Single-SNV endpoint returns [{"Chrom":.., "Ref":.., "Alt":.., "PHRED":..}]
@@ -160,42 +161,42 @@ def fetch_cadd_scores(variants: list[dict]) -> dict:
                 score = float(raw) if raw is not None else None
                 break
             except (requests.exceptions.Timeout, requests.exceptions.ConnectionError):
+                api_failed = True
                 time.sleep(min(20, 2 ** attempt * 2))
             except Exception as e:
+                api_failed = True
                 print(f"  Warning: CADD fetch failed for {key}: {e}")
                 break
 
         results[key] = score  # None if genuinely unresolvable — never faked
-        if score is None:
-            consecutive_failures += 1
-            consecutive_404s = consecutive_404s + 1 if was_404 else 0
-            if consecutive_404s >= 15:
+
+        if score is not None:
+            consecutive_api_failures = 0
+            new_fetches += 1
+            time.sleep(1.0)   # respect rate limit
+            continue
+
+        if api_failed:
+            consecutive_api_failures += 1
+            if consecutive_api_failures >= 15:
                 print("\n" + "!" * 60)
-                print(f"CADD API returned 404 for {consecutive_404s} lookups in a row.")
-                print("This is NOT rate-limiting — it means the request URL itself is")
-                print(f"wrong (check CADD_VERSION='{CADD_VERSION}' is a real CADD release)")
-                print("or these variants genuinely aren't in CADD's precomputed set.")
-                print("Fix the URL/version before re-running, or fetching will keep 404ing.")
-                print("!" * 60)
-                break
-            if consecutive_failures >= 15:
-                print("\n" + "!" * 60)
-                print(f"CADD API has failed {consecutive_failures} lookups in a row —")
-                print("likely persistently rate-limited or unreachable. Stopping instead")
-                print("of continuing to hammer it. Already-fetched scores are cached.")
+                print(f"CADD API had {consecutive_api_failures} genuine transport/rate-limit")
+                print("failures in a row (timeouts, 5xx, or exhausted 429 retries).")
+                print("Stopping instead of continuing to hammer it. Already-fetched")
+                print("scores are cached — re-run later to pick up where this left off.")
                 print("!" * 60)
                 break
         else:
-            consecutive_failures = 0
-            consecutive_404s = 0
-            new_fetches += 1
-            time.sleep(1.0)   # respect rate limit
+            # A clean "no data" answer (404 or empty 200) — not an API failure,
+            # doesn't reset or advance the failure streak, doesn't abort the run.
+            no_data_count += 1
 
     # Save updated cache
     with open(CADD_CACHE, "w") as f:
         json.dump(results, f)
 
-    print(f"  Fetched {new_fetches} new scores. Total cache: {len(results)}.")
+    print(f"  Fetched {new_fetches} new scores ({no_data_count} confirmed 'no CADD record'). "
+          f"Total cache: {len(results)}.")
     return results
 
 

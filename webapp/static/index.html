@@ -58,6 +58,11 @@
         <input type="range" id="conservation_phylop" min="-3" max="3" step="0.1" value="0.5" />
       </label>
 
+      <label class="field">
+        <span>Residue # on structure (optional)</span>
+        <input type="number" id="residue_number" min="1" placeholder="e.g. 6" />
+      </label>
+
       <button type="submit" class="btn-primary">PREDICT PATHOGENICITY →</button>
     </form>
 
@@ -102,9 +107,11 @@
       <span id="struct-label">—</span>
     </div>
     <div id="viewer" class="viewer-box"></div>
+    <div id="residue-readout" class="residue-readout mono hidden"></div>
     <div class="struct-buttons">
       <button id="btn-download" class="btn-secondary">DOWNLOAD</button>
-      <button id="btn-reset" class="btn-secondary">RESET</button>
+      <button id="btn-zoom-residue" class="btn-secondary hidden">ZOOM TO RESIDUE</button>
+      <button id="btn-reset" class="btn-secondary">RESET VIEW</button>
     </div>
   </section>
 
