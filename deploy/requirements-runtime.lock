@@ -1,0 +1,24 @@
+# Exact packages verified on Ubuntu 24.04 / Python 3.12, 24 October 2026.
+# Recreate the native serving environment with: pip install -r deploy/requirements-runtime.lock
+annotated-doc==0.0.5
+annotated-types==0.8.0
+anyio==4.15.1
+click==8.5.0
+cloudpickle==3.1.2
+fastapi==0.162.0
+h11==0.16.0
+idna==3.20
+joblib==1.6.0
+narwhals==2.27.1
+numpy==2.5.4
+opentelemetry-api==1.45.1
+pydantic==2.14.1
+pydantic_core==2.50.1
+python-dotenv==1.2.4
+scikit-learn==1.9.0
+scipy==1.18.1
+starlette==1.10.0
+threadpoolctl==3.7.0
+typing-inspection==0.4.4
+typing_extensions==4.16.0
+uvicorn==0.54.0

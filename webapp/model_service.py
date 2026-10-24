@@ -8,7 +8,9 @@ it clearly in the status bar — it is never silently presented as the real
 research result.
 """
 
+import os
 import sys
+import warnings
 from pathlib import Path
 
 import joblib
@@ -43,12 +45,27 @@ def _load_real_bundle():
     if not MODEL_FILE.exists():
         return None
     try:
-        bundle = joblib.load(MODEL_FILE)
-        if "feature_names" not in bundle or "model" not in bundle:
-            return None
+        from sklearn.exceptions import InconsistentVersionWarning
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", InconsistentVersionWarning)
+            bundle = joblib.load(MODEL_FILE)
+        if not isinstance(bundle, dict) or not {"feature_names", "model"} <= bundle.keys():
+            raise ValueError("Expected a model bundle with model and feature_names")
+        names = bundle["feature_names"]
+        if (not isinstance(names, (list, tuple)) or not names
+                or len(set(names)) != len(names) or any(name not in FEATURE_ORDER for name in names)):
+            raise ValueError("Model bundle contains unsupported feature names")
+        if not callable(getattr(bundle["model"], "predict_proba", None)):
+            raise ValueError("Model does not support probability prediction")
+        if list(bundle["model"].classes_) != [0, 1]:
+            raise ValueError("Model must use benign=0 and pathogenic=1 classes")
         return bundle
-    except Exception:
-        return None
+    except Exception as exc:
+        raise RuntimeError(
+            f"Unable to load trained model at {MODEL_FILE}. "
+            "Check the artifact and install its matching scikit-learn version."
+        ) from exc
 
 
 def _train_synthetic_fallback():
@@ -93,17 +110,29 @@ def _train_synthetic_fallback():
 
 class ModelService:
     def __init__(self):
+        require_real = os.getenv("REQUIRE_REAL_MODEL", "").strip().lower() in {"1", "true", "yes", "on"}
         real = _load_real_bundle()
         if real is not None:
             self.bundle = real
             self.demo_mode = False
         else:
+            if require_real:
+                raise RuntimeError(
+                    "REQUIRE_REAL_MODEL is enabled but the trained model is missing. "
+                    f"Provide {MODEL_FILE} before starting the service."
+                )
             self.bundle = _train_synthetic_fallback()
             self.demo_mode = True
 
+        workers = int(os.getenv("MODEL_N_JOBS", "1"))
+        if workers < 1:
+            raise ValueError("MODEL_N_JOBS must be a positive integer")
+        if hasattr(self.bundle["model"], "n_jobs"):
+            self.bundle["model"].n_jobs = workers
+
         meta_path = MODELS_DIR / "model_meta.json"
         self.meta = self.bundle.get("meta", {})
-        if not self.demo_mode and meta_path.exists():
+        if not self.demo_mode and not self.meta and meta_path.exists():
             import json
             with open(meta_path) as f:
                 self.meta = json.load(f)
@@ -114,13 +143,15 @@ class ModelService:
             "synthetic_placeholder" if self.demo_mode
             else self.bundle.get("data_provenance", "unknown")
         )
+        if require_real and self.data_provenance != "real":
+            raise RuntimeError("REQUIRE_REAL_MODEL requires an artifact with real data provenance")
 
     def model_info(self):
         return {
             "demo_mode": self.demo_mode,
             "data_provenance": self.data_provenance,
             "meta": self.meta,
-            "feature_order": FEATURE_ORDER,
+            "feature_order": list(self.bundle["feature_names"]),
             "genes": list(TARGET_GENES.keys()),
         }
 
@@ -140,7 +171,9 @@ class ModelService:
         feature_order = self.bundle["feature_names"]
         X = np.array([[values[name] for name in feature_order]])
         model = self.bundle["model"]
-        prob = float(model.predict_proba(X)[0][1])
+        scaler = self.bundle.get("scaler")
+        model_input = scaler.transform(X) if scaler is not None else X
+        prob = float(model.predict_proba(model_input)[0][1])
 
         if prob >= 0.75:
             tier, color = "pathogenic", "high"
@@ -149,9 +182,8 @@ class ModelService:
         else:
             tier, color = "benign", "low"
 
-        # Feature contributions: real SHAP if available and not in demo mode,
-        # otherwise a fast approximation from the RF's feature_importances_
-        # scaled by how far each feature sits from a neutral midpoint.
+        # These are heuristic display weights, not SHAP values or calibrated
+        # per-prediction explanations.
         contributions = self._feature_contributions(model, feature_order, values, X)
 
         notes = []
@@ -172,6 +204,7 @@ class ModelService:
             "probability": round(prob * 100, 1),
             "notes": notes,
             "contributions": contributions,
+            "contribution_method": "heuristic",
             "demo_mode": self.demo_mode,
             "data_provenance": self.data_provenance,
         }

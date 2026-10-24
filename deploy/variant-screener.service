@@ -1,0 +1,30 @@
+[Unit]
+Description=West Africa Variant Screener
+After=network.target
+
+[Service]
+Type=simple
+User=variant-screener
+Group=variant-screener
+WorkingDirectory=/opt/variant-screener/current
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=PYTHONUNBUFFERED=1
+Environment=REQUIRE_REAL_MODEL=true
+Environment=MODEL_N_JOBS=1
+Environment=OMP_NUM_THREADS=1
+Environment=OPENBLAS_NUM_THREADS=1
+Environment=MKL_NUM_THREADS=1
+ExecStart=/opt/variant-screener/current/.venv/bin/uvicorn webapp.main:app --host 127.0.0.1 --port 7860 --workers 1 --limit-concurrency 16
+Restart=on-failure
+RestartSec=5
+# Initial shared-host limits; measure real traffic before increasing them.
+MemoryMax=768M
+CPUQuota=100%
+TasksMax=128
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=full
+
+[Install]
+WantedBy=multi-user.target
