@@ -8,15 +8,15 @@ Built by a high school researcher in Accra, Ghana. Inspired by Harvard's [popEVE
 
 ## Key Results
 
-*Last verified: real-data pipeline run of 2026-07-16 — 1,805 variants (of 2,177 ClinVar
-labels) with real gnomAD AFR frequencies and real CADD scores. See
-[`RELEASE_NOTES.md`](RELEASE_NOTES.md) for exactly what "real" required fixing.*
+*Last verified: corrected training run of 2026-10-24 using the 1,805 real-feature
+variants built on 2026-07-16 (of 2,177 ClinVar labels). The train/test split
+contains 1,444 training and 361 held-out variants.*
 
 | Model | AUC-ROC | Accuracy | Notes |
 |---|---|---|---|
 | Logistic Regression (baseline) | 0.954 | 0.94 | n=361 held-out test set |
 | **Random Forest + SMOTE (best)** | **0.983** | **0.95** | n=361 held-out test set |
-| Random Forest, 5-fold CV | 0.980 ± 0.003 | — | mean ± std across folds |
+| Random Forest, 5-fold training CV | 0.9700 ± 0.0052 | — | SMOTE fitted separately inside each training fold |
 
 Test-set performance by class (Random Forest):
 
@@ -28,18 +28,20 @@ Test-set performance by class (Random Forest):
 **Training data**: 1,805 variants — HBB (1,050), G6PD (523), HBA2 (130), HBA1 (102).
 1,199 benign / 606 pathogenic before SMOTE balancing.
 
-> ⚠ **Open question, not yet a claimed result**: a separate AFR-allele-frequency
-> subset evaluation (n=40) returned AUC-ROC = 1.000. A perfect score on a subset
-> that small is more often a sign of leakage or an easy split than a genuinely
-> perfect classifier, and hasn't been verified as a properly held-out,
-> class-balanced subset yet. **Do not cite this number in a paper or submission
-> until it's checked** — see Known Issues below.
+> The historical AFR-frequency subset AUC = 1.000 included training rows and
+> is withdrawn. The corrected held-out subset contains only 6 variants, all
+> benign, so an AUC cannot be calculated. The corrected training run produced
+> exactly the same held-out predictions as the previous model; its evaluation
+> metadata now records the actual split and corrected cross-validation.
 
 ---
 
 ## Live Demo
 
-**[huggingface.co/spaces/trixx4191/variant-screener](#)** ←will  deploy here after Phase 4 of dev 
+**[Open the live screener](https://malaria-sickle-screener.13-62-14-125.sslip.io)**
+
+Deployed on the existing AWS Lightsail VM with HTTPS. The project-named
+hostname uses free IP-based DNS; no purchased domain is required.
 
 ---
 
@@ -54,7 +56,8 @@ from static files. Layout is four numbered panels:
   (gene, region, allele frequency, CADD, conservation, optional residue
   number) and the pathogenicity call — a rubber-stamp-style tier badge
   (green / amber / red), probability bar, interpretation notes, and
-  SHAP-style feature-contribution bars.
+  heuristic relative feature-weight bars. These are not per-prediction SHAP
+  explanations.
 - **03 / SUBSTITUTION MATRIX** (center, popEVE-style): a per-position ×
   per-amino-acid heatmap of ESM2 zero-shot mutation-effect scores
   (masked-marginal log-odds vs. WT — the same class of signal as EVE/popEVE,
@@ -68,11 +71,15 @@ from static files. Layout is four numbered panels:
   `2HHB` for HBB/HBA1/HBA2, `2BH9` for G6PD, an AlphaFold model for DARC
   (clearly labeled as predicted, not experimental). Enter a residue number
   (or click an example chip) to highlight the exact mutated residue —
-  stick+sphere in yellow with a floating label, camera zoomed in — while the
-  rest of the chain still recolors to match the pathogenicity tier once a
-  prediction comes back. The four built-in example chips point at real,
-  textbook-documented positions (HbS/HbC at β-globin codon 6, G6PD A- at
-  residue 68, G6PD Mediterranean at residue 188), not invented coordinates.
+  sticks and spheres in element colors with a floating label, camera zoomed
+  in. The protein cartoon uses the [PyMOL secondary-structure palette](https://3dmol.org/doc/colors.ts.html):
+  helices red, beta sheets yellow, and loops/coils green. The selected chain
+  is opaque and other chains are faded. Predictions preserve this palette;
+  risk colors appear in the result panel. An on-screen legend explains the
+  colors. The four built-in chips are illustrative feature
+  presets, not retrieved variant annotations or validated clinical examples.
+  Their residue highlights illustrate the structures; residue identity is
+  not an input to the classifier.
   Download (saves the loaded PDB file), Zoom to Residue, and Reset View
   buttons included. Rotation is manual drag-only — no auto-orbiting camera,
   no particles/bloom.
@@ -81,17 +88,17 @@ from static files. Layout is four numbered panels:
   - 🟢 `✓ real data · model: ... · AUC ... · n=...` — a model trained on
     real gnomAD/CADD features. This is the only state that should be cited
     anywhere.
-  - 🔴 `⚠ REAL MODEL, PLACEHOLDER DATA` — a real trained model whose
+  - 🔴 `⚠ REAL MODEL, PLACEHOLDER DATA` — a trained model whose
     features were zero-filled placeholders, not real API data. This state
     exists specifically so a placeholder-trained model can never silently
     look like a real result.
-  - 🔴 `⚠ DEMO MODE` — no trained model exists yet at all; the app trained a
+  - 🔴 `⚠ DEMO MODE` — no trained model exists; local development trained a
     tiny synthetic fallback on startup so the UI is still fully interactive.
 
 ### Run it
 
 ```bash
-pip install -r requirements.txt
+pip install -r requirements-runtime.txt
 uvicorn webapp.main:app --reload --port 8000
 # open http://localhost:8000
 ```
@@ -109,14 +116,23 @@ python scripts/compute_heatmap.py --gene HBB
 python scripts/compute_heatmap.py --all
 ```
 
-### Deploy to Hugging Face Spaces (Docker SDK)
+### Deploy to AWS or Hugging Face Spaces
+
+See [the deployment guide](docs/DEPLOYMENT.md) for the current AWS VM
+assessment, a small serving-only container, artifact transfer, and health
+checks. Models and heatmaps are gitignored, so a clean clone does not contain
+them. Copy trusted model artifacts into `outputs/models/` before building.
+The production container refuses to start without a compatible model with
+real data provenance. Viewer failures do not prevent predictions.
+
+For Hugging Face Spaces (Docker SDK):
 
 1. Create a new Space → SDK: **Docker**
-2. Push this repo (the `Dockerfile` at the repo root builds it automatically)
+2. Upload the source and trusted model artifacts (the root `Dockerfile` builds it)
 3. The Space exposes the app on port 7860
 
-Once the real training pipeline has been run (`build_features.py` → `train.py`),
-the same UI automatically picks up the real model — no code changes needed.
+After training or replacing artifacts, rebuild/restart the app to load the
+new model. Verify `/api/health` and `/api/model-info` after deployment.
 
 ---
 
@@ -269,16 +285,16 @@ Real gnomAD/CADD data is the default, enforced behavior of this pipeline, not
 an opt-in — `build_features.py` refuses to build a placeholder-only matrix
 unless you explicitly pass `--allow-fake`, and every matrix it produces is
 stamped with a `data_provenance` field (`real` / `synthetic_placeholder`)
-that flows through training into `model_meta.json` and the web UI's status
-bar. See `RELEASE_NOTES.md` for the full history of what that took to get
-right — several rounds of it were silent zero-fill bugs, not obvious errors.
+that flows through training into the saved model, `model_meta.json`, and the
+web UI's status bar.
 
 **Known issues, open as of the last real-data run:**
 
-- **AFR-subset AUC = 1.000 (n=40) is unverified.** This needs a leakage check
-  (is the subset properly held out from training? is n=40 just too small to
-  be meaningful?) before it's cited anywhere. Currently in the results table
-  above as a flagged, unverified caveat — not a claimed finding.
+- **Historical cross-validation and AFR-subset results are withdrawn.** CV
+  previously applied SMOTE before splitting into folds, and the AFR subset
+  included training rows. The 24 October 2026 run recomputed CV correctly;
+  its held-out AFR subset is too small and single-class for AUC. A frequency threshold
+  does not itself establish a West African validation cohort.
 - **372 of 2,177 ClinVar variants (17%) have no CADD score** and are dropped
   from the training matrix rather than faked. Most are large deletions or
   malformed `ref==alt` self-substitution rows (a ClinVar/parsing artifact

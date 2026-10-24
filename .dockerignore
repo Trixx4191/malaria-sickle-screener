@@ -1,0 +1,23 @@
+# Allow only serving code and explicitly selected, trusted model artifacts.
+**
+!requirements-runtime.txt
+!webapp/
+!webapp/__init__.py
+!webapp/main.py
+!webapp/model_service.py
+!webapp/static/
+!webapp/static/index.html
+!webapp/static/style.css
+!webapp/static/script.js
+!src/
+!src/__init__.py
+!src/utils/
+!src/utils/__init__.py
+!src/utils/config.py
+!outputs/
+!outputs/models/
+!outputs/models/variant_screener_v1.pkl
+!outputs/models/model_meta.json
+!data/
+!data/heatmaps/
+!data/heatmaps/*.json

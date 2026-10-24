@@ -1,128 +1,165 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>West Africa Variant Screener</title>
-<link rel="stylesheet" href="style.css" />
-<script src="https://3Dmol.org/build/3Dmol-min.js"></script>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#f5f7fa" />
+  <meta name="description" content="Explore genetic variants with African population context, model predictions, and interactive protein structures." />
+  <title>Variant Screener · West African Genomics</title>
+  <link rel="stylesheet" href="style.css" />
 </head>
 <body>
+  <svg class="icon-definitions" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <symbol id="icon-arrow" viewBox="0 0 24 24"><path d="M7 17 17 7M7 7h10v10" /></symbol>
+    <symbol id="icon-sliders" viewBox="0 0 24 24"><path d="M4 7h9m4 0h3M4 17h3m4 0h9" /><circle cx="15" cy="7" r="2" /><circle cx="9" cy="17" r="2" /></symbol>
+    <symbol id="icon-molecule" viewBox="0 0 24 24"><circle cx="6" cy="6" r="3" /><circle cx="18" cy="8" r="2.5" /><circle cx="10" cy="18" r="3" /><path d="m8.8 6.5 6.7 1M7 9l2 6m3.2.7 4.4-5.5" /></symbol>
+    <symbol id="icon-chart" viewBox="0 0 24 24"><path d="M4 4v16h16M8 15l4-5 4 2 4-6" /></symbol>
+    <symbol id="icon-download" viewBox="0 0 24 24"><path d="M12 3v12m-4-4 4 4 4-4M5 16v4h14v-4" /></symbol>
+    <symbol id="icon-reset" viewBox="0 0 24 24"><path d="M4 10a8 8 0 1 1 1.8 8M4 4v6h6" /></symbol>
+    <symbol id="icon-focus" viewBox="0 0 24 24"><path d="M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5" /><circle cx="12" cy="12" r="3" /></symbol>
+    <symbol id="icon-chevron" viewBox="0 0 24 24"><path d="m8 10 4 4 4-4" /></symbol>
+  </svg>
 
-<header class="app-header">
-  <div class="header-inner">
-    <h1>WEST AFRICA VARIANT SCREENER</h1>
-    <p class="mono">Random Forest &middot; ClinVar + 1000 Genomes AFR cohort &middot; Accra, Ghana</p>
-  </div>
-  <div id="status-bar" class="status-bar mono">loading model…</div>
-</header>
-
-<main class="grid">
-
-  <!-- 01 / INPUT -->
-  <section class="panel" id="panel-input">
-    <h2 class="panel-title">01 / INPUT</h2>
-    <form id="variant-form">
-      <label class="field">
-        <span>Gene symbol</span>
-        <select id="gene_name" name="gene_name">
-          <option value="HBB">HBB — sickle-cell / beta-thalassemia</option>
-          <option value="G6PD">G6PD — malaria resistance</option>
-          <option value="DARC">DARC — Duffy antigen / P. vivax resistance</option>
-          <option value="HBA1">HBA1 — alpha-thalassemia</option>
-          <option value="HBA2">HBA2 — alpha-thalassemia</option>
-        </select>
-      </label>
-
-      <label class="field">
-        <span>AFR allele frequency <b id="af-val">0.010</b></span>
-        <input type="range" id="allele_freq_afr" min="0" max="1" step="0.001" value="0.01" />
-      </label>
-
-      <label class="field">
-        <span>CADD Phred score <b id="cadd-val">15.0</b></span>
-        <input type="range" id="cadd_score" min="0" max="60" step="0.5" value="15" />
-      </label>
-
-      <label class="field">
-        <span>Gene region</span>
-        <select id="gene_region" name="gene_region">
-          <option value="exonic">Exonic (coding)</option>
-          <option value="utr">UTR (untranslated)</option>
-          <option value="intronic">Intronic / other</option>
-        </select>
-      </label>
-
-      <label class="field">
-        <span>Conservation (phyloP) <b id="cons-val">0.5</b></span>
-        <input type="range" id="conservation_phylop" min="-3" max="3" step="0.1" value="0.5" />
-      </label>
-
-      <label class="field">
-        <span>Residue # on structure (optional)</span>
-        <input type="number" id="residue_number" min="1" placeholder="e.g. 6" />
-      </label>
-
-      <button type="submit" class="btn-primary">PREDICT PATHOGENICITY →</button>
-    </form>
-
-    <div class="examples mono">
-      <span>examples:</span>
-      <button class="chip" data-ex="hbs">HbS (sickle)</button>
-      <button class="chip" data-ex="hbb-path">HBB likely-path.</button>
-      <button class="chip" data-ex="g6pd-benign">G6PD common-benign</button>
-      <button class="chip" data-ex="g6pd-rare">G6PD rare-deleterious</button>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="#workspace" aria-label="Variant Screener workspace">
+        <span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 32 32" fill="none"><path d="M10 5c0 9 12 13 12 22M22 5c0 9-12 13-12 22M11 9h10m-8 7h6m-8 7h10" /></svg></span>
+        <span class="brand-copy"><strong>Variant Screener</strong><span>West African genomics</span></span>
+      </a>
+      <nav class="main-nav" aria-label="Main navigation">
+        <a class="nav-active" href="#workspace" aria-current="page">Workspace</a>
+        <a href="https://github.com/Trixx4191/malaria-sickle-screener#readme" target="_blank" rel="noopener noreferrer">Documentation <svg class="icon"><use href="#icon-arrow" /></svg></a>
+      </nav>
+      <div id="status-bar" class="status-bar" role="status">Checking model…</div>
     </div>
-  </section>
+  </header>
 
-  <!-- 02 / RESULT -->
-  <section class="panel" id="panel-result">
-    <h2 class="panel-title">02 / RESULT</h2>
-    <div id="result-empty" class="mono muted">Submit a variant to see a prediction.</div>
-    <div id="result-body" class="hidden">
-      <div id="tier-stamp" class="tier-stamp">—</div>
-      <div class="prob-bar-track"><div id="prob-bar-fill" class="prob-bar-fill"></div></div>
-      <div id="prob-label" class="mono">—</div>
+  <main class="app-shell" id="workspace">
+    <section class="workspace-intro" aria-labelledby="workspace-title">
+      <div><p class="eyebrow">Research workspace</p><h1 id="workspace-title">Variant analysis</h1><p class="intro-description">Explore genetic variation with African population context.</p></div>
+      <span class="research-badge"><span></span>Research prototype</span>
+    </section>
 
-      <h3 class="sub-title">interpretation</h3>
-      <ul id="notes-list" class="notes-list"></ul>
+    <div class="grid">
+      <section class="panel input-panel" id="panel-input" aria-labelledby="input-title">
+        <div class="panel-header">
+          <span class="panel-icon"><svg class="icon"><use href="#icon-sliders" /></svg></span>
+          <div><h2 id="input-title">Variant details</h2><p>Start with a gene and its annotations.</p></div>
+        </div>
+        <form id="variant-form">
+          <div class="annotation-selects">
+            <label class="field"><span>Gene symbol</span>
+              <select id="gene_name" name="gene_name">
+                <option value="HBB">HBB — beta-globin</option>
+                <option value="G6PD">G6PD — glucose-6-phosphate dehydrogenase</option>
+                <option value="DARC">DARC — Duffy antigen</option>
+                <option value="HBA1">HBA1 — alpha-globin 1</option>
+                <option value="HBA2">HBA2 — alpha-globin 2</option>
+              </select>
+            </label>
+            <label class="field"><span>Gene region</span>
+              <select id="gene_region" name="gene_region"><option value="exonic">Exonic (coding)</option><option value="utr">UTR (untranslated)</option><option value="intronic">Intronic / other</option></select>
+            </label>
+          </div>
+          <div class="score-fields">
+            <label class="field range-field">
+              <span>AFR allele frequency <output id="af-val" for="allele_freq_afr">0.010</output></span>
+              <input type="range" id="allele_freq_afr" min="0" max="1" step="0.001" value="0.01" />
+              <span class="range-scale"><span>Rare · 0</span><span>1 · Common</span></span>
+            </label>
+            <label class="field range-field">
+              <span>CADD Phred score <output id="cadd-val" for="cadd_score">15.0</output></span>
+              <input type="range" id="cadd_score" min="0" max="60" step="0.5" value="15" />
+              <span class="range-scale"><span>0</span><span>60</span></span>
+            </label>
+            <label class="field range-field">
+              <span>Conservation <span class="field-hint">phyloP proxy</span><output id="cons-val" for="conservation_phylop">0.5</output></span>
+              <input type="range" id="conservation_phylop" min="-3" max="3" step="0.1" value="0.5" />
+              <span class="range-scale"><span>−3</span><span>3</span></span>
+            </label>
+          </div>
+          <button type="submit" class="btn-primary">Analyze variant</button>
+        </form>
 
-      <h3 class="sub-title">feature contributions (SHAP-style)</h3>
-      <div id="contrib-bars" class="contrib-bars"></div>
+        <div class="preset-section">
+          <div class="preset-heading"><h3>Try an example</h3><span>Illustrative inputs</span></div>
+          <div class="examples">
+            <button class="chip" data-ex="hbb-high-cadd"><span class="chip-gene">HBB</span>High CADD</button>
+            <button class="chip" data-ex="hbb-moderate-cadd"><span class="chip-gene">HBB</span>Moderate CADD</button>
+            <button class="chip" data-ex="g6pd-common-frequency"><span class="chip-gene">G6PD</span>Common frequency</button>
+            <button class="chip" data-ex="g6pd-rare-frequency"><span class="chip-gene">G6PD</span>Rare frequency</button>
+          </div>
+          <p class="preset-note">Examples use illustrative features, not retrieved annotations for a specific variant.</p>
+        </div>
+        <div class="model-summary" aria-label="Model evaluation">
+          <div><span>Held-out AUC</span><strong id="model-auc">—</strong></div>
+          <div><span>Training variants</span><strong id="model-training-count">—</strong></div>
+        </div>
+      </section>
+
+      <div class="analysis-column">
+      <section class="panel structure-panel" id="panel-structure" aria-labelledby="structure-title">
+        <div class="panel-header">
+          <span class="panel-icon"><svg class="icon"><use href="#icon-molecule" /></svg></span>
+          <div><h2 id="structure-title">Protein structure</h2><p>Molecular context for your selected gene.</p></div>
+          <span id="viewer-gene" class="gene-badge">HBB</span>
+        </div>
+        <div id="viewer" class="viewer-box">
+          <p id="viewer-status" class="viewer-status" role="status">Loading protein structure…</p>
+          <span class="viewer-hint" aria-hidden="true">Drag to rotate <span>·</span> Scroll to zoom</span>
+        </div>
+        <div class="struct-controls"><span id="struct-label">Loading structure information…</span></div>
+        <div class="viewer-toolbar">
+          <label class="residue-field" for="residue_number"><span>Highlight residue</span><input type="number" id="residue_number" min="1" step="1" placeholder="e.g. 6" /></label>
+          <div class="struct-buttons">
+            <button id="btn-zoom-residue" class="btn-secondary hidden"><svg class="icon"><use href="#icon-focus" /></svg>Focus</button>
+            <button id="btn-reset" class="btn-secondary" disabled><svg class="icon"><use href="#icon-reset" /></svg>Reset view</button>
+            <button id="btn-download" class="btn-secondary" disabled><svg class="icon"><use href="#icon-download" /></svg>Download PDB</button>
+          </div>
+        </div>
+        <div id="residue-readout" class="residue-readout hidden"></div>
+        <div class="structure-legend" aria-label="Protein secondary structure color key">
+          <ul class="structure-color-key">
+            <li><i class="structure-swatch helix" aria-hidden="true"></i>α-helix</li>
+            <li><i class="structure-swatch sheet" aria-hidden="true"></i>β-sheet</li>
+            <li><i class="structure-swatch coil" aria-hidden="true"></i>Loop / coil</li>
+          </ul>
+          <details class="color-details"><summary>Color key <svg class="icon"><use href="#icon-chevron" /></svg></summary><div class="color-explanation"><strong>PyMOL secondary structure</strong><p>The selected chain is opaque; other chains are faded.</p><p>Selected atoms: C gray · N blue · O red · S yellow. Residue highlights illustrate the structure and are not model inputs.</p></div></details>
+        </div>
+      </section>
+
+      <section class="panel result-panel" id="panel-result" aria-labelledby="result-title" aria-live="polite">
+        <div class="panel-header">
+          <span class="panel-icon"><svg class="icon"><use href="#icon-chart" /></svg></span>
+          <div><h2 id="result-title">Prediction results</h2><p>Prediction and supporting annotations.</p></div>
+          <span id="result-state" class="state-label">Awaiting analysis</span>
+        </div>
+        <div id="result-empty" class="result-empty">Choose an example or enter your annotations, then analyze the variant to see its prediction.</div>
+        <div id="result-body" class="hidden">
+          <div class="score-overview">
+            <div><span class="metric-label">Pathogenicity estimate</span><div id="probability-value" class="probability-value">—</div></div>
+            <div class="result-identity"><span id="result-gene" class="gene-badge">HBB</span><div id="tier-stamp" class="tier-stamp">—</div></div>
+          </div>
+          <div class="prob-bar-track"><div id="prob-bar-fill" class="prob-bar-fill"></div></div>
+          <div id="prob-label" class="prob-label">—</div>
+          <div class="result-insights"><h3 class="sub-title">Interpretation</h3><ul id="notes-list" class="notes-list"></ul></div>
+          <details class="weights-details"><summary>Relative feature weights <span>Heuristic</span><svg class="icon"><use href="#icon-chevron" /></svg></summary><p class="weights-note">Relative weights scaled to the largest value. These do not measure each feature’s effect on this individual prediction.</p><div id="contrib-bars" class="contrib-bars"></div></details>
+        </div>
+      </section>
+
+      </div>
+
+      <section class="panel panel-wide matrix-panel hidden" id="panel-matrix" aria-labelledby="matrix-title">
+        <div class="panel-header"><span class="panel-icon"><svg class="icon"><use href="#icon-chart" /></svg></span><div><h2 id="matrix-title">Substitution landscape</h2><p>ESM2 masked-marginal log-odds relative to wild type. Select a position to explore substitutions.</p></div></div>
+        <div id="matrix-scroll" class="matrix-scroll"></div><div id="matrix-detail" class="matrix-detail hidden"></div>
+      </section>
     </div>
-  </section>
 
-  <!-- 03 / SUBSTITUTION MATRIX -->
-  <section class="panel panel-wide hidden" id="panel-matrix">
-    <h2 class="panel-title">03 / SUBSTITUTION MATRIX</h2>
-    <p class="mono muted small">ESM2 zero-shot masked-marginal log-odds vs. WT, per position × amino acid. Click a column for the ranked substitution list.</p>
-    <div id="matrix-scroll" class="matrix-scroll"></div>
-    <div id="matrix-detail" class="matrix-detail hidden"></div>
-  </section>
-
-  <!-- 04 / STRUCTURE -->
-  <section class="panel" id="panel-structure">
-    <h2 class="panel-title">04 / STRUCTURE</h2>
-    <div class="struct-controls mono">
-      <span id="struct-label">—</span>
-    </div>
-    <div id="viewer" class="viewer-box"></div>
-    <div id="residue-readout" class="residue-readout mono hidden"></div>
-    <div class="struct-buttons">
-      <button id="btn-download" class="btn-secondary">DOWNLOAD</button>
-      <button id="btn-zoom-residue" class="btn-secondary hidden">ZOOM TO RESIDUE</button>
-      <button id="btn-reset" class="btn-secondary">RESET VIEW</button>
-    </div>
-  </section>
-
-</main>
-
-<footer class="mono small">
-  ⚠ Research prototype. Not validated for clinical use Yet. Consult a medical geneticist for clinical variant interpretation.<br/>
-  Built by a student researcher Ghana · Inspired by Harvard's popEVE model ·
-  <a href="https://github.com/Trixx4191/malaria-sickle-screener">GitHub</a>
-</footer>
-
-<script src="script.js"></script>
+    <footer class="workspace-footer">
+      <div><span class="footer-label">Research use only</span><p>Not validated for clinical use. Consult a medical geneticist for clinical variant interpretation.</p></div>
+      <a href="https://github.com/Trixx4191/malaria-sickle-screener" target="_blank" rel="noopener noreferrer">Built in Accra, Ghana <span>·</span> View source <svg class="icon"><use href="#icon-arrow" /></svg></a>
+    </footer>
+  </main>
+  <script src="script.js"></script>
 </body>
 </html>

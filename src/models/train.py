@@ -19,6 +19,7 @@ import joblib
 import numpy as np
 import pandas as pd
 from imblearn.over_sampling import SMOTE
+from imblearn.pipeline import Pipeline
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import (
@@ -99,19 +100,27 @@ def train_baseline(X_train, y_train, X_test, y_test) -> dict:
     print(f"  AUC-ROC : {auc:.4f}")
     print(classification_report(y_test, y_pred, target_names=["Benign", "Pathogenic"]))
 
-    return {"model": lr, "scaler": scaler, "auc": auc, "type": "logistic"}
+    return {"model": lr, "scaler": scaler, "auc": auc, "type": "logistic",
+            "fit_variants": len(y_train), "test_variants": len(y_test)}
 
 
 def train_random_forest(X_train, y_train, X_test, y_test) -> dict:
     print("\n── Random Forest + SMOTE ───────────────────────────────")
 
-    # SMOTE oversampling
-    sm = SMOTE(random_state=RANDOM_SEED)
-    X_res, y_res = sm.fit_resample(X_train, y_train)
-    print(f"  After SMOTE — class counts: {dict(zip(*np.unique(y_res, return_counts=True)))}")
+    # Each CV fold must learn its synthetic neighbors from that fold's
+    # training rows only. Resampling before CV leaks validation information.
+    pipeline = Pipeline([
+        ("smote", SMOTE(random_state=RANDOM_SEED)),
+        ("model", RandomForestClassifier(**RF_PARAMS)),
+    ])
+    cv = StratifiedKFold(n_splits=CV_FOLDS, shuffle=True, random_state=RANDOM_SEED)
+    cv_scores = cross_val_score(pipeline, X_train, y_train, cv=cv, scoring="roc_auc", n_jobs=1)
+    print(f"  {CV_FOLDS}-fold training CV AUC: {cv_scores.mean():.4f} ± {cv_scores.std():.4f}")
 
-    rf = RandomForestClassifier(**RF_PARAMS)
-    rf.fit(X_res, y_res)
+    pipeline.fit(X_train, y_train)
+    # Save the fitted forest alone: inference does not need the training-only
+    # sampler or an imbalanced-learn dependency.
+    rf = pipeline.named_steps["model"]
 
     y_pred = rf.predict(X_test)
     y_prob = rf.predict_proba(X_test)[:, 1]
@@ -120,36 +129,39 @@ def train_random_forest(X_train, y_train, X_test, y_test) -> dict:
     print(f"  AUC-ROC : {auc:.4f}")
     print(classification_report(y_test, y_pred, target_names=["Benign", "Pathogenic"]))
 
-    # Cross-validation
-    cv = StratifiedKFold(n_splits=CV_FOLDS, shuffle=True, random_state=RANDOM_SEED)
-    cv_scores = cross_val_score(rf, X_res, y_res, cv=cv, scoring="roc_auc", n_jobs=-1)
-    print(f"  {CV_FOLDS}-fold CV AUC: {cv_scores.mean():.4f} ± {cv_scores.std():.4f}")
-
     return {"model": rf, "scaler": None, "auc": auc, "type": "random_forest",
-            "cv_mean": cv_scores.mean(), "cv_std": cv_scores.std()}
+            "cv_mean": cv_scores.mean(), "cv_std": cv_scores.std(),
+            "cv_method": "stratified_training_folds_with_fold_local_smote",
+            "fit_variants": len(y_train), "test_variants": len(y_test)}
 
 
-def evaluate_afr_subset(bundle: dict, df: pd.DataFrame):
-    """Evaluate specifically on West African high-frequency variants."""
-    print("\n── West African Subset Evaluation ──────────────────────")
-    afr_mask = df["allele_freq_afr"] > AFR_FREQ_THRESHOLD
-    df_afr = df[afr_mask]
-    if len(df_afr) < 10:
-        print(f"  Warning: only {len(df_afr)} AFR variants above freq threshold. Skipping.")
-        return None
-
-    X_afr = df_afr[FEATURE_COLS].values
-    y_afr = df_afr["label"].values
+def evaluate_afr_subset(bundle: dict, X_test, y_test):
+    """Evaluate high-AFR-frequency variants only within the untouched test set."""
+    print("\n── Held-out AFR-frequency Subset Evaluation ────────────")
+    afr_mask = X_test[:, FEATURE_COLS.index("allele_freq_afr")] > AFR_FREQ_THRESHOLD
+    X_afr = X_test[afr_mask]
+    y_afr = y_test[afr_mask]
+    result = {
+        "evaluation_set": "held_out_test",
+        "variants": len(y_afr),
+        "benign": int(np.sum(y_afr == 0)),
+        "pathogenic": int(np.sum(y_afr == 1)),
+        "auc": None,
+    }
+    if len(y_afr) < 10 or len(np.unique(y_afr)) < 2:
+        print(f"  Only {len(y_afr)} held-out AFR variants or fewer than two classes; AUC skipped.")
+        return result
 
     model = bundle["model"]
-    if bundle["scaler"]:
+    if bundle.get("scaler") is not None:
         X_afr = bundle["scaler"].transform(X_afr)
 
     y_prob = model.predict_proba(X_afr)[:, 1]
     auc = roc_auc_score(y_afr, y_prob)
-    print(f"  AFR subset size: {len(df_afr)} variants")
-    print(f"  AFR subset AUC-ROC: {auc:.4f}  ← key result for paper")
-    return auc
+    print(f"  Held-out AFR subset size: {len(y_afr)} variants")
+    print(f"  Held-out AFR subset AUC-ROC: {auc:.4f} (small subsets remain exploratory)")
+    result["auc"] = float(auc)
+    return result
 
 
 def plot_roc(bundles: list[dict], X_test, y_test):
@@ -188,6 +200,22 @@ def plot_confusion(bundle: dict, X_test, y_test):
 def save_model(bundle: dict, df: pd.DataFrame):
     feature_order_version = "v1"
     provenance = load_data_provenance()
+    # Keep metadata inside the artifact as well as the human-readable sidecar,
+    # so an old sidecar cannot change the app's reported evaluation results.
+    meta = {
+        "model_type": bundle["type"],
+        "auc_all": round(float(bundle["auc"]), 4),
+        "cv_mean": round(float(bundle["cv_mean"]), 4) if "cv_mean" in bundle else None,
+        "cv_std": round(float(bundle["cv_std"]), 4) if "cv_std" in bundle else None,
+        "cv_method": bundle.get("cv_method"),
+        "evaluation_set": "held_out_test",
+        "feature_names": FEATURE_COLS,
+        "training_variants": bundle["fit_variants"],
+        "test_variants": bundle["test_variants"],
+        "total_variants": len(df),
+        "afr_subset": bundle.get("afr_subset"),
+        "data_provenance": provenance.get("data_provenance", "unknown"),
+    }
     payload = {
         "model": bundle["model"],
         "scaler": bundle["scaler"],
@@ -195,22 +223,13 @@ def save_model(bundle: dict, df: pd.DataFrame):
         "feature_order_version": feature_order_version,
         "model_type": bundle["type"],
         "auc": bundle["auc"],
-        "training_size": len(df),
+        "training_size": bundle["fit_variants"],
         "data_provenance": provenance.get("data_provenance", "unknown"),
+        "meta": meta,
     }
     joblib.dump(payload, MODEL_FILE)
     print(f"\n✓ Model saved: {MODEL_FILE}")
 
-    # Also save a small metadata JSON for the UI to display
-    meta = {
-        "model_type": bundle["type"],
-        "auc_all": round(bundle["auc"], 4),
-        "cv_mean": round(bundle.get("cv_mean", 0), 4),
-        "cv_std": round(bundle.get("cv_std", 0), 4),
-        "feature_names": FEATURE_COLS,
-        "training_variants": len(df),
-        "data_provenance": provenance.get("data_provenance", "unknown"),
-    }
     meta_path = MODELS_DIR / "model_meta.json"
     with open(meta_path, "w") as f:
         json.dump(meta, f, indent=2)
@@ -235,7 +254,7 @@ def main():
     if args.model in ("all", "random_forest"):
         rf_bundle = train_random_forest(X_train, y_train, X_test, y_test)
         bundles.append(rf_bundle)
-        evaluate_afr_subset(rf_bundle, df)
+        rf_bundle["afr_subset"] = evaluate_afr_subset(rf_bundle, X_test, y_test)
 
     if len(bundles) >= 2:
         plot_roc(bundles, X_test, y_test)
