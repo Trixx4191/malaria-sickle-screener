@@ -45,20 +45,21 @@ hostname uses free IP-based DNS; no purchased domain is required.
 
 ---
 
-## Web app — brutalist requisition UI + live structure + substitution matrix
+## Web app — variant analysis workspace
 
 The web UI is a single FastAPI backend (`webapp/main.py`, `webapp/model_service.py`)
-serving a plain HTML/CSS/JS frontend (`webapp/static/`).
-build step, everything renders straight
-from static files. Layout is four numbered panels:
+serving a plain HTML/CSS/JS frontend (`webapp/static/`). There is no frontend
+build step. The responsive workspace uses a compact input column beside the
+protein viewer and prediction results. On mobile, results follow the inputs.
 
-- **01 / INPUT + 02 / RESULT** (left column): the variant requisition form
-  (gene, region, allele frequency, CADD, conservation, optional residue
-  number) and the pathogenicity call — a rubber-stamp-style tier badge
+- **Variant details and prediction results**: the annotation form
+  (gene, region, allele frequency, CADD, conservation), example presets,
+  and the model's pathogenicity estimate — a tier badge
   (green / amber / red), probability bar, interpretation notes, and
   heuristic relative feature-weight bars. These are not per-prediction SHAP
-  explanations.
-- **03 / SUBSTITUTION MATRIX** (center, popEVE-style): a per-position ×
+  explanations. Feature weights expand on demand, and model evaluation
+  statistics appear beneath the inputs.
+- **Substitution landscape** (optional): a per-position ×
   per-amino-acid heatmap of ESM2 zero-shot mutation-effect scores
   (masked-marginal log-odds vs. WT — the same class of signal as EVE/popEVE,
   computed from a protein language model instead of a per-protein MSA/VAE).
@@ -67,9 +68,10 @@ from static files. Layout is four numbered panels:
   been precomputed for that gene** — see `scripts/compute_heatmap.py` and
   `data/heatmaps/README.md`. It stays hidden rather than showing placeholder
   numbers.
-- **04 / STRUCTURE** (right): a real `3Dmol.js` molecular viewer —
+- **Protein structure**: a real `3Dmol.js` molecular viewer —
   `2HHB` for HBB/HBA1/HBA2, `2BH9` for G6PD, an AlphaFold model for DARC
-  (clearly labeled as predicted, not experimental). Enter a residue number
+  (clearly labeled as predicted, not experimental). The structure toolbar
+  provides a separate residue field. Enter a residue number
   (or click an example chip) to highlight the exact mutated residue —
   sticks and spheres in element colors with a floating label, camera zoomed
   in. The protein cartoon uses the [PyMOL secondary-structure palette](https://3dmol.org/doc/colors.ts.html):
@@ -83,17 +85,10 @@ from static files. Layout is four numbered panels:
   Download (saves the loaded PDB file), Zoom to Residue, and Reset View
   buttons included. Rotation is manual drag-only — no auto-orbiting camera,
   no particles/bloom.
-- **Status bar** (top right) reports the model's real data provenance, not
-  just whether a model file exists — it distinguishes three states:
-  - 🟢 `✓ real data · model: ... · AUC ... · n=...` — a model trained on
-    real gnomAD/CADD features. This is the only state that should be cited
-    anywhere.
-  - 🔴 `⚠ REAL MODEL, PLACEHOLDER DATA` — a trained model whose
-    features were zero-filled placeholders, not real API data. This state
-    exists specifically so a placeholder-trained model can never silently
-    look like a real result.
-  - 🔴 `⚠ DEMO MODE` — no trained model exists; local development trained a
-    tiny synthetic fallback on startup so the UI is still fully interactive.
+- **Model status** (top right) reports real-data, unverified-data, synthetic
+  demo, or unavailable states. Only real-data models display a held-out AUC.
+  The compact status preserves provenance warnings; further detail is available
+  in its tooltip and prediction notes.
 
 ### Run it
 
@@ -105,7 +100,7 @@ uvicorn webapp.main:app --reload --port 8000
 
 ### Generate the substitution matrix (optional)
 
-The "03 / SUBSTITUTION MATRIX" panel needs a one-time precompute per gene —
+The substitution landscape panel needs a one-time precompute per gene —
 it needs internet access to `rest.uniprot.org` and `huggingface.co`, so it's
 meant to be run on your own machine, not inside a restricted sandbox:
 

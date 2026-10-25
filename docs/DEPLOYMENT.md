@@ -21,6 +21,31 @@ and reloads Nginx. A renewal dry run including that hook passed. Port 443 was
 enabled for HTTPS; the temporary SSH access rule was removed after deployment.
 The two existing app services and their Nginx routes were preserved.
 
+## UI refresh — 25 October 2026
+
+UI version `ui-953d46f2b39a` adds the compact annotation column, prominent
+protein viewer, readable prediction summary, accessible controls, and a
+responsive mobile layout. Model provenance, scientific color palettes, and
+prediction behavior are preserved.
+
+This update publishes only static files. The live index references
+`style.ui-953d46f2b39a.css` and `script.ui-953d46f2b39a.js`; older assets remain
+available for clients holding the previous HTML. The index was replaced
+atomically after asset checksum verification. The backend process and model
+were not restarted or replaced.
+
+The previous index, new UI manifest, and publication record are in
+`/opt/variant-screener/ui-backups/ui-953d46f2b39a/`. To roll back this UI only:
+
+```sh
+sudo cp /opt/variant-screener/ui-backups/ui-953d46f2b39a/index.html /opt/variant-screener/current/webapp/static/index.rollback.new
+sudo mv /opt/variant-screener/current/webapp/static/index.rollback.new /opt/variant-screener/current/webapp/static/index.html
+```
+
+All 11 UI regression checks passed. Real-browser checks verified predictions,
+manual residue controls, keyboard focus, responsive canvas sizing, color-key
+popovers, and desktop/mobile layouts without JavaScript or network errors.
+
 The serving app is FastAPI, static HTML/CSS/JS, and a six-feature scikit-learn
 model. It does not need a GPU, Jupyter, raw ClinVar downloads, or request-time
 ESM2 inference. Train models and generate optional heatmap JSON on a development
