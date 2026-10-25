@@ -98,7 +98,7 @@ test('AlphaFold resolves current metadata URL and downloads the loaded PDB', asy
   const h = harness(async url => {
     requests.push(url);
     if (url === '/api/model-info') return jsonResponse({demo_mode:false,data_provenance:'real'});
-    if (url === '/api/structure/DARC') return jsonResponse({pdb_id:'AF-Q16570-F1',chain:'A',source:'alphafold',label:'Predicted DARC'});
+    if (url === '/api/structure/DARC') return jsonResponse({pdb_id:'AF-Q16570-F1',chain:'A',source:'alphafold',label:'Duffy antigen (ACKR1) — AlphaFold predicted model'});
     if (url === 'https://alphafold.ebi.ac.uk/api/prediction/Q16570') return jsonResponse([{entryId:'AF-Q16570-F1_v99',pdbUrl:currentUrl}]);
     if (url === currentUrl) return {ok:true,text:async () => pdbText};
     return jsonResponse({}, false);
@@ -110,6 +110,8 @@ test('AlphaFold resolves current metadata URL and downloads the loaded PDB', asy
   assert.equal(requests.some(url => url.includes('rcsb.org')), false);
   assert.deepEqual(loaded, [{text:pdbText,format:'pdb'}]);
   assert.equal(h.elements['btn-download'].disabled, false);
+  assert.match(h.elements['struct-label'].textContent, /predicted/);
+  assert.equal(h.elements['struct-label'].title, 'Duffy antigen (ACKR1): AlphaFold predicted model');
   assert.equal(vm.runInContext('state.currentStructureText', h.context), pdbText);
   vm.runInContext('downloadStructure()', h.context);
   const download = h.created.find(el => el.tag === 'a');
@@ -327,4 +329,27 @@ test('a preset cannot restore a residue the user cleared while its structure was
   assert.equal(vm.runInContext('state.currentResidue', h.context), null);
   assert.equal(viewer.labels.length, 0);
   assert.equal(h.elements['btn-zoom-residue'].classList.contains('hidden'), true);
+});
+
+test('ACKR1 context works without the viewer while prediction requests retain the DARC API symbol', async () => {
+  let payload;
+  const h = harness(async (url, options) => {
+    if (url === '/api/predict') {
+      payload = JSON.parse(options.body);
+      return jsonResponse({...prediction,notes:['Common AFR frequency — interpret with other evidence.']});
+    }
+    return jsonResponse({}, false);
+  });
+  h.elements.gene_name.value = 'DARC';
+  await vm.runInContext('onGeneChange()', h.context);
+  assert.equal(vm.runInContext('state.viewer', h.context), null);
+  assert.equal(h.elements['gene-symbol-label'].textContent, 'ACKR1 (DARC)');
+  assert.match(h.elements['gene-reference-link'].href, /g=ENSG00000213088$/);
+  await vm.runInContext('submitPrediction()', h.context);
+  assert.equal(payload.gene_name, 'DARC');
+  assert.equal(h.elements['result-gene'].textContent, 'ACKR1 (DARC)');
+  const note = h.elements['notes-list'].children[0].textContent;
+  assert.equal(note.includes('—'), false);
+  assert.match(note, /Common AFR frequency/);
+  assert.match(note, /interpret with other evidence/);
 });

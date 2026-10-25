@@ -17,10 +17,10 @@ const state = {
 // Illustrative feature combinations, not retrieved variant annotations.
 // The residue substitutions illustrate structures and are not model inputs.
 const EXAMPLES = {
-  "hbb-high-cadd":         { gene_name: "HBB",  allele_freq_afr: 0.004, cadd_score: 34.0, gene_region: "exonic", conservation_phylop: 2.1,  residue: 6,   wt: "GLU", mut: "VAL", note: "HBB high-CADD feature preset — residue 6 highlight" },
-  "hbb-moderate-cadd":     { gene_name: "HBB",  allele_freq_afr: 0.001, cadd_score: 28.0, gene_region: "exonic", conservation_phylop: 1.8,  residue: 6,   wt: "GLU", mut: "LYS", note: "HBB moderate-CADD feature preset — residue 6 highlight" },
-  "g6pd-common-frequency": { gene_name: "G6PD", allele_freq_afr: 0.420, cadd_score: 3.0,  gene_region: "exonic", conservation_phylop: -0.5, residue: 68,  wt: "VAL", mut: "MET", note: "G6PD common-frequency feature preset — residue 68 highlight" },
-  "g6pd-rare-frequency":   { gene_name: "G6PD", allele_freq_afr: 0.000, cadd_score: 42.0, gene_region: "exonic", conservation_phylop: 2.8,  residue: 188, wt: "SER", mut: "PHE", note: "G6PD rare-frequency feature preset — residue 188 highlight" },
+  "hbb-high-cadd":         { gene_name: "HBB",  allele_freq_afr: 0.004, cadd_score: 34.0, gene_region: "exonic", conservation_phylop: 2.1,  residue: 6,   wt: "GLU", mut: "VAL", note: "HBB high-CADD preset: residue 6" },
+  "hbb-moderate-cadd":     { gene_name: "HBB",  allele_freq_afr: 0.001, cadd_score: 28.0, gene_region: "exonic", conservation_phylop: 1.8,  residue: 6,   wt: "GLU", mut: "LYS", note: "HBB moderate-CADD preset: residue 6" },
+  "g6pd-common-frequency": { gene_name: "G6PD", allele_freq_afr: 0.420, cadd_score: 3.0,  gene_region: "exonic", conservation_phylop: -0.5, residue: 68,  wt: "VAL", mut: "MET", note: "G6PD common-frequency preset: residue 68" },
+  "g6pd-rare-frequency":   { gene_name: "G6PD", allele_freq_afr: 0.000, cadd_score: 42.0, gene_region: "exonic", conservation_phylop: 2.8,  residue: 188, wt: "SER", mut: "PHE", note: "G6PD rare-frequency preset: residue 188" },
 };
 
 const AA3 = { GLU: "E", VAL: "V", LYS: "K", MET: "M", SER: "S", PHE: "F" };
@@ -33,9 +33,54 @@ const FEATURE_LABELS = {
   review_stars: "ClinVar review quality",
 };
 
+// Ensembl release 116, GRCh38, verified 2026-10-25. These 1-based inclusive
+// intervals cover complete annotated genes, not transcripts or coding sequence.
+const GENE_CONTEXT = {
+  HBB:  { symbol: "HBB", name: "hemoglobin subunit beta", chromosome: "11", start: 5225464, end: 5229395, strand: -1, cytoband: "11p15.4", chromosomeLength: 135086622, ensemblId: "ENSG00000244734" },
+  G6PD: { symbol: "G6PD", name: "glucose-6-phosphate dehydrogenase", chromosome: "X", start: 154517825, end: 154547584, strand: -1, cytoband: "Xq28", chromosomeLength: 156040895, ensemblId: "ENSG00000160211" },
+  DARC: { symbol: "ACKR1", name: "atypical chemokine receptor 1 (Duffy blood group)", chromosome: "1", start: 159204568, end: 159206500, strand: 1, cytoband: "1q23.2", chromosomeLength: 248956422, ensemblId: "ENSG00000213088" },
+  HBA1: { symbol: "HBA1", name: "hemoglobin subunit alpha 1", chromosome: "16", start: 176660, end: 177527, strand: 1, cytoband: "16p13.3", chromosomeLength: 90338345, ensemblId: "ENSG00000206172" },
+  HBA2: { symbol: "HBA2", name: "hemoglobin subunit alpha 2", chromosome: "16", start: 172021, end: 173910, strand: 1, cytoband: "16p13.3", chromosomeLength: 90338345, ensemblId: "ENSG00000188536" },
+};
+
+function displayGene(gene) {
+  return gene === "DARC" ? "ACKR1 (DARC)" : gene;
+}
+
+function cleanCopy(text) {
+  return String(text).replace(/\s*\u2014\s*/g, ": ");
+}
+
 function setOptionalText(id, value) {
   const node = $(id);
   if (node) node.textContent = value;
+}
+
+function updateGeneContext() {
+  const gene = $("gene_name").value;
+  const info = GENE_CONTEXT[gene];
+  if (!info) return;
+  const number = value => value.toLocaleString("en-US");
+  const locus = `chr${info.chromosome}:${number(info.start)}-${number(info.end)}`;
+  const span = info.end - info.start + 1;
+  setOptionalText("gene-symbol-label", displayGene(gene));
+  setOptionalText("gene-title", info.name);
+  setOptionalText("gene-locus", locus);
+  setOptionalText("gene-cytoband", info.cytoband);
+  setOptionalText("gene-strand", info.strand === 1 ? "Forward (+)" : "Reverse (-)");
+  setOptionalText("gene-track-name", `chr${info.chromosome}`);
+  setOptionalText("gene-range-end", number(info.chromosomeLength));
+  const marker = $("gene-locus-marker");
+  if (marker) {
+    marker.style.left = `${(info.start - 1) / info.chromosomeLength * 100}%`;
+    marker.style.width = `${span / info.chromosomeLength * 100}%`;
+    marker.title = `${displayGene(gene)}: ${locus}; ${number(span)} bp gene span. Marker enlarged for visibility.`;
+  }
+  const reference = $("gene-reference-link");
+  if (reference) {
+    reference.href = `https://www.ensembl.org/Homo_sapiens/Gene/Summary?g=${info.ensemblId}`;
+    reference.title = `${info.symbol}: Ensembl GRCh38 gene record`;
+  }
 }
 
 function setModelStatus(message, status, detail) {
@@ -85,8 +130,8 @@ async function loadModelInfo() {
     const m = data.meta || {};
     const modelName = { random_forest: "Random Forest", logistic: "Logistic Regression" }[m.model_type] || "Model";
     const hasRealData = !data.demo_mode && data.data_provenance === "real";
-    setOptionalText("model-auc", hasRealData && Number.isFinite(m.auc_all) ? m.auc_all.toFixed(3) : "—");
-    setOptionalText("model-training-count", Number.isFinite(m.training_variants) ? m.training_variants.toLocaleString() : "—");
+    setOptionalText("model-auc", hasRealData && Number.isFinite(m.auc_all) ? m.auc_all.toFixed(3) : "n/a");
+    setOptionalText("model-training-count", Number.isFinite(m.training_variants) ? m.training_variants.toLocaleString() : "n/a");
     const count = $("model-training-count");
     if (count) {
       count.title = data.demo_mode ? "Synthetic examples used to fit the demonstration model."
@@ -103,8 +148,8 @@ async function loadModelInfo() {
     }
   } catch (e) {
     setModelStatus("Model unavailable", "error", "Model information could not be loaded. Check your connection and reload the page.");
-    setOptionalText("model-auc", "—");
-    setOptionalText("model-training-count", "—");
+    setOptionalText("model-auc", "n/a");
+    setOptionalText("model-training-count", "n/a");
   }
 }
 
@@ -124,11 +169,11 @@ function invalidatePrediction() {
   state.predictionRequest = null;
   const btn = document.querySelector(".btn-primary");
   btn.disabled = false;
-  btn.textContent = "Analyze variant";
-  setOptionalText("result-state", "Awaiting analysis");
-  setOptionalText("result-gene", $("gene_name").value);
-  setOptionalText("probability-value", "—");
-  $("result-empty").textContent = "Inputs changed. Submit the variant again to update the prediction.";
+  btn.textContent = "Score variant";
+  setOptionalText("result-state", "Ready");
+  setOptionalText("result-gene", displayGene($("gene_name").value));
+  setOptionalText("probability-value", "n/a");
+  $("result-empty").textContent = "Inputs changed. Score again.";
   $("result-empty").classList.remove("hidden");
   $("result-body").classList.add("hidden");
 }
@@ -141,11 +186,11 @@ async function submitPrediction() {
   const timeout = setTimeout(() => controller.abort(), 20000);
   const btn = document.querySelector(".btn-primary");
   btn.disabled = true;
-  btn.textContent = "Analyzing…";
-  setOptionalText("result-state", "Updating");
-  setOptionalText("result-gene", $("gene_name").value);
-  setOptionalText("probability-value", "—");
-  $("result-empty").textContent = "Analyzing variant…";
+  btn.textContent = "Scoring…";
+  setOptionalText("result-state", "Scoring");
+  setOptionalText("result-gene", displayGene($("gene_name").value));
+  setOptionalText("probability-value", "n/a");
+  $("result-empty").textContent = "Scoring variant…";
   $("result-empty").classList.remove("hidden");
   $("result-body").classList.add("hidden");
   const payload = predictionPayload();
@@ -174,13 +219,13 @@ async function submitPrediction() {
       : "Prediction unavailable. Check your connection and try again.";
     $("result-empty").classList.remove("hidden");
     $("result-body").classList.add("hidden");
-    setOptionalText("result-state", "Awaiting analysis");
+    setOptionalText("result-state", "Ready");
   } finally {
     clearTimeout(timeout);
     if (version === state.predictionVersion) {
       state.predictionRequest = null;
       btn.disabled = false;
-      btn.textContent = "Analyze variant";
+      btn.textContent = "Score variant";
     }
   }
 }
@@ -189,7 +234,7 @@ function renderResult(result) {
   $("result-empty").classList.add("hidden");
   $("result-body").classList.remove("hidden");
   setOptionalText("probability-value", `${result.probability}%`);
-  setOptionalText("result-gene", $("gene_name").value);
+  setOptionalText("result-gene", displayGene($("gene_name").value));
   setOptionalText("result-state", "Complete");
 
   const stamp = $("tier-stamp");
@@ -200,7 +245,7 @@ function renderResult(result) {
 
   $("prob-bar-fill").style.width = result.probability + "%";
   let caveat = "";
-  if (result.demo_mode) caveat = "  (demo model — not real data)";
+  if (result.demo_mode) caveat = "  (demo model, synthetic data)";
   else if (result.data_provenance !== "real") caveat = `  (⚠ trained on ${result.data_provenance} data, not real gnomAD/CADD)`;
   $("prob-label").textContent = `${result.probability}% pathogenic probability` + caveat;
 
@@ -208,7 +253,7 @@ function renderResult(result) {
   notesList.innerHTML = "";
   result.notes.forEach(n => {
     const li = document.createElement("li");
-    li.textContent = n;
+    li.textContent = cleanCopy(n);
     notesList.appendChild(li);
   });
 
@@ -239,7 +284,8 @@ function renderResult(result) {
 
 async function onGeneChange({ preserveResidue = false } = {}) {
   const gene = $("gene_name").value;
-  setOptionalText("viewer-gene", gene);
+  updateGeneContext();
+  setOptionalText("viewer-gene", displayGene(gene));
   if (state.structureGene && state.structureGene !== gene && !preserveResidue) {
     $("residue_number").value = "";
   }
@@ -250,6 +296,8 @@ async function onGeneChange({ preserveResidue = false } = {}) {
   state.currentChain = null;
   state.currentStructureText = null;
   state.currentResidue = null;
+  $("struct-label").textContent = "";
+  $("struct-label").title = "";
   $("btn-download").disabled = true;
   $("btn-reset").disabled = true;
   $("residue-readout").classList.add("hidden");
@@ -271,8 +319,10 @@ async function onGeneChange({ preserveResidue = false } = {}) {
     }
     const info = await res.json();
     if (version !== state.structureVersion) return false;
-    $("struct-label").textContent =
-      `${info.pdb_id} · chain ${info.chain} · ${info.source === "alphafold" ? "AlphaFold (predicted)" : "experimental"} — ${info.label}`;
+    $("struct-label").textContent = info.source === "alphafold"
+      ? `AlphaFold ${info.pdb_id} · chain ${info.chain} · predicted`
+      : `PDB ${info.pdb_id} · chain ${info.chain} · experimental`;
+    $("struct-label").title = cleanCopy(info.label || "");
     const url = await structureUrl(info, controller.signal);
     const pdbResponse = await fetch(url, { signal: controller.signal });
     if (!pdbResponse.ok) throw new Error(`Structure download failed (${pdbResponse.status})`);
@@ -320,7 +370,7 @@ async function initViewer() {
       script.onerror = () => { clearTimeout(timeout); reject(new Error("Viewer download failed")); };
       document.head.appendChild(script);
     });
-    state.viewer = window.$3Dmol.createViewer($("viewer"), { backgroundColor: "0x101b2c" });
+    state.viewer = window.$3Dmol.createViewer($("viewer"), { backgroundColor: "0x111c1a" });
     return true;
   } catch (e) {
     console.error(e);
@@ -379,15 +429,15 @@ function applyAllStyles() {
       sphere: { colorscheme: "Jmol", scale: 0.3 },
     });
 
-    // addLabel needs a concrete {x,y,z}, not a selector — pull it from the
+    // addLabel needs a concrete {x,y,z}, not a selector. Pull it from the
     // residue's alpha carbon (falling back to any atom in the residue).
     let atoms = state.viewer.selectedAtoms({ ...sel, atom: "CA" });
     if (!atoms.length) atoms = state.viewer.selectedAtoms(sel);
     if (atoms.length) {
       const a = atoms[0];
-      state.viewer.addLabel(note || `residue ${pos}`, {
+      state.viewer.addLabel(cleanCopy(note || `residue ${pos}`), {
         position: { x: a.x, y: a.y, z: a.z },
-        backgroundColor: "0x101b2c",
+        backgroundColor: "0x111c1a",
         backgroundOpacity: 0.75,
         fontColor: "0xffffff",
         fontSize: 12,
@@ -415,7 +465,7 @@ function highlightResidue(pos, wt, mut, note) {
   readout.classList.remove("hidden");
   const wtLabel = wt ? `${wt}${AA3[wt] ? ` (${AA3[wt]})` : ""}` : null;
   const mutLabel = mut ? `${mut}${AA3[mut] ? ` (${AA3[mut]})` : ""}` : null;
-  readout.innerHTML = `<b>residue ${pos}</b>${wtLabel && mutLabel ? ` — ${wtLabel} → ${mutLabel}` : ""}${note ? `<br/>${note}` : ""}`;
+  readout.innerHTML = `<b>residue ${pos}</b>${wtLabel && mutLabel ? `: ${wtLabel} → ${mutLabel}` : ""}${note ? `<br/>${cleanCopy(note)}` : ""}`;
   $("btn-zoom-residue").classList.remove("hidden");
 
   zoomToResidue();
@@ -549,17 +599,18 @@ function showColumnDetail(data, pos) {
     .sort((a, b) => a[1] - b[1])
     .map(([aa, s]) => `<tr><td>${posData.wt}${pos}${aa}</td><td>${s.toFixed(2)}</td></tr>`)
     .join("");
-  detail.innerHTML = `<div class="sub-title">position ${pos} (WT ${posData.wt}) — ranked substitutions</div>
+  detail.innerHTML = `<div class="sub-title">position ${pos} (WT ${posData.wt}): ranked substitutions</div>
     <table class="matrix-table"><tr><th>mutation</th><th>score</th></tr>${rows}</table>`;
 }
 
 /* ── Wire up ───────────────────────────────────────────────────── */
 
 document.addEventListener("DOMContentLoaded", () => {
+  updateGeneContext();
   initSliders();
-  setOptionalText("result-state", "Awaiting analysis");
-  setOptionalText("result-gene", $("gene_name").value);
-  setOptionalText("viewer-gene", $("gene_name").value);
+  setOptionalText("result-state", "Ready");
+  setOptionalText("result-gene", displayGene($("gene_name").value));
+  setOptionalText("viewer-gene", displayGene($("gene_name").value));
 
   $("variant-form").addEventListener("submit", (e) => {
     e.preventDefault();
