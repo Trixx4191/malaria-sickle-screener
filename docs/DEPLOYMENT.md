@@ -48,7 +48,24 @@ rival-analysis startup requests can also return 429 under the existing F1
 compute limit. These application/startup issues were recorded without changing
 F1 source or weakening its request limits during the hostname setup.
 
-## UI refresh — 25 October 2026
+## Gene reference UI: 25 October 2026
+
+The current UI version is `gene-ui-21ae178287fc`. It uses a paper-and-ink
+genetics reference layout, an actual GRCh38 locus strip, compact annotation
+presets, and short labels. User-visible em dashes were removed, including
+those in rendered API notes and structure descriptions. The gene metadata
+uses Ensembl release 116; its sources and coordinate conventions are in
+`docs/GENE_REFERENCE.md`.
+
+Live assets are `style.gene-ui-21ae178287fc.css` and
+`script.gene-ui-21ae178287fc.js`. The previous index and publication record
+are saved under `/opt/variant-screener/ui-backups/gene-ui-21ae178287fc/`.
+The model and backend process were preserved. All 12 UI regression checks
+passed, including ACKR1 display with the existing DARC API key. Real-browser
+checks verified all five locus records, clean copy, predictions, keyboard
+focus, automatic canvas resizing, and the mobile layout.
+
+## Earlier UI refresh: 25 October 2026
 
 UI version `ui-953d46f2b39a` adds the compact annotation column, prominent
 protein viewer, readable prediction summary, accessible controls, and a

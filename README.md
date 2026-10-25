@@ -45,12 +45,15 @@ hostname uses free IP-based DNS; no purchased domain is required.
 
 ---
 
-## Web app — variant analysis workspace
+## Web app: gene reference and variant scoring
 
 The web UI is a single FastAPI backend (`webapp/main.py`, `webapp/model_service.py`)
 serving a plain HTML/CSS/JS frontend (`webapp/static/`). There is no frontend
-build step. The responsive workspace uses a compact input column beside the
-protein viewer and prediction results. On mobile, results follow the inputs.
+build step. The interface places the selected gene's GRCh38 locus above the
+annotations, protein structure, and model score. A chromosome track, cytoband,
+strand, and Ensembl record provide gene context. The five reference records
+are documented in [GENE_REFERENCE.md](docs/GENE_REFERENCE.md); these fields do
+not enter the classifier. On mobile, results follow the annotation form.
 
 - **Variant details and prediction results**: the annotation form
   (gene, region, allele frequency, CADD, conservation), example presets,
