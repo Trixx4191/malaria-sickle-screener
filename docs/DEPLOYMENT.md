@@ -21,6 +21,33 @@ and reloads Nginx. A renewal dry run including that hook passed. Port 443 was
 enabled for HTTPS; the temporary SSH access rule was removed after deployment.
 The two existing app services and their Nginx routes were preserved.
 
+## Shared VM project URLs — 25 October 2026
+
+| Project | Public HTTPS URL | Service / local port |
+| --- | --- | --- |
+| Tidewatch | [Open Tidewatch](https://tidewatch.13-62-14-125.sslip.io) | `tidewatch.service` / `3000` |
+| F1 Strategy AI | [Open F1 Strategy](https://f1-strategy.13-62-14-125.sslip.io) | `f1-strategy.service` / `8100` |
+| Variant Screener | [Open Variant Screener](https://malaria-sickle-screener.13-62-14-125.sslip.io) | `variant-screener.service` / `7860` |
+
+The two additional names are configured in
+`/etc/nginx/sites-available/project-names`, with a link under `sites-enabled`.
+Their HTTP routes redirect to HTTPS while retaining the ACME challenge path.
+Tidewatch preserves its default map query parameters; F1 preserves its API
+paths, request limits, and proxy timeouts. The previous bare-IP and EC2-hostname
+routes remain available.
+
+Separate Let's Encrypt certificates named `tidewatch` and `f1-strategy` expire
+on 23 January 2027 and renew through the existing `certbot.timer` and Nginx
+reload hook. Application code and running service processes were not changed.
+
+Browser verification found Tidewatch's page, map assets, and startup APIs all
+working over its new HTTPS name. F1's dashboard, assets, session/demo endpoints,
+and health endpoint work, but initial undercut/overcut chart requests return
+500 because the demo loader accepts only the 2024 Bahrain race. Concurrent
+rival-analysis startup requests can also return 429 under the existing F1
+compute limit. These application/startup issues were recorded without changing
+F1 source or weakening its request limits during the hostname setup.
+
 ## UI refresh — 25 October 2026
 
 UI version `ui-953d46f2b39a` adds the compact annotation column, prominent
