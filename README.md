@@ -1,344 +1,214 @@
-# West Africa Variant Screener
+# West African Variant Screener
 
-**AI classifier predicting pathogenic genetic variants in West African populations, with focus on malaria-resistance and sickle-cell (HBB) genes.**
+A research prototype that scores manually supplied genetic-variant annotations
+using a ClinVar-trained classifier and African population-frequency features.
+The interface covers HBB, G6PD, ACKR1 (API key `DARC`), HBA1 and HBA2,
+with gene reference loci, protein structures and optional ESM2 substitution maps.
 
-Built by a high school researcher in Accra, Ghana. Inspired by Harvard's [popEVE](https://www.nature.com/articles/s41588-025-02400-1) model — but optimized for West African genomic data, which is systematically underrepresented in existing tools.
+**Research use only. Not validated for clinical use.** A model score is not a
+diagnosis or a clinical variant classification. Real-data provenance and
+deployment health do not establish clinical validity or West African population
+performance. Reports from use in clinics have not yet been incorporated into
+the results below.
 
----
+Documentation reviewed against the repository on **30 October 2026**. This is a
+documentation update, not a new training run or a live-server verification.
 
-## Key Results
+## Documentation
 
-*Last verified: corrected training run of 2026-10-24 using the 1,805 real-feature
-variants built on 2026-07-16 (of 2,177 ClinVar labels). The train/test split
-contains 1,444 training and 361 held-out variants.*
+| Guide | Contents |
+| --- | --- |
+| [Using the screener](docs/USAGE.md) | Current controls, interpretation, troubleshooting and feedback to record |
+| [API reference](docs/API.md) | Endpoints, input ranges, responses and model states |
+| [Deployment](docs/DEPLOYMENT.md) | Docker, systemd, Nginx/HTTPS, artifact updates and historical AWS deployment records |
+| [Data and training](docs/DATA.md) | Downloads, feature construction, caches, provenance and limitations |
+| [Gene reference](docs/GENE_REFERENCE.md) | GRCh38 coordinates, ACKR1/DARC mapping and structures |
+| [Substitution maps](docs/HEATMAPS.md) | Optional ESM2 precomputation, JSON format and serving |
 
-| Model | AUC-ROC | Accuracy | Notes |
-|---|---|---|---|
-| Logistic Regression (baseline) | 0.954 | 0.94 | n=361 held-out test set |
-| **Random Forest + SMOTE (best)** | **0.983** | **0.95** | n=361 held-out test set |
-| Random Forest, 5-fold training CV | 0.9700 ± 0.0052 | — | SMOTE fitted separately inside each training fold |
+## Run locally
 
-Test-set performance by class (Random Forest):
-
-| Class | Precision | Recall | F1 | Support |
-|---|---|---|---|---|
-| Benign | 0.97 | 0.95 | 0.96 | 240 |
-| Pathogenic | 0.90 | 0.94 | 0.92 | 121 |
-
-**Training data**: 1,805 variants — HBB (1,050), G6PD (523), HBA2 (130), HBA1 (102).
-1,199 benign / 606 pathogenic before SMOTE balancing.
-
-> The historical AFR-frequency subset AUC = 1.000 included training rows and
-> is withdrawn. The corrected held-out subset contains only 6 variants, all
-> benign, so an AUC cannot be calculated. The corrected training run produced
-> exactly the same held-out predictions as the previous model; its evaluation
-> metadata now records the actual split and corrected cross-validation.
-
----
-
-## Live Demo
-
-**[Open the live screener](https://malaria-sickle-screener.13-62-14-125.sslip.io)**
-
-Deployed on the existing AWS Lightsail VM with HTTPS. The project-named
-hostname uses free IP-based DNS; no purchased domain is required.
-
----
-
-## Web app: gene reference and variant scoring
-
-The web UI is a single FastAPI backend (`webapp/main.py`, `webapp/model_service.py`)
-serving a plain HTML/CSS/JS frontend (`webapp/static/`). There is no frontend
-build step. The interface places the selected gene's GRCh38 locus above the
-annotations, protein structure, and model score. A chromosome track, cytoband,
-strand, and Ensembl record provide gene context. The five reference records
-are documented in [GENE_REFERENCE.md](docs/GENE_REFERENCE.md); these fields do
-not enter the classifier. On mobile, results follow the annotation form.
-
-- **Variant details and prediction results**: the annotation form
-  (gene, region, allele frequency, CADD, conservation), example presets,
-  and the model's pathogenicity estimate — a tier badge
-  (green / amber / red), probability bar, interpretation notes, and
-  heuristic relative feature-weight bars. These are not per-prediction SHAP
-  explanations. Feature weights expand on demand, and model evaluation
-  statistics appear beneath the inputs.
-- **Substitution landscape** (optional): a per-position ×
-  per-amino-acid heatmap of ESM2 zero-shot mutation-effect scores
-  (masked-marginal log-odds vs. WT — the same class of signal as EVE/popEVE,
-  computed from a protein language model instead of a per-protein MSA/VAE).
-  Click a column to list all 20 substitutions at that position, sorted by
-  effect, in the table below. **This panel only appears once real data has
-  been precomputed for that gene** — see `scripts/compute_heatmap.py` and
-  `data/heatmaps/README.md`. It stays hidden rather than showing placeholder
-  numbers.
-- **Protein structure**: a real `3Dmol.js` molecular viewer —
-  `2HHB` for HBB/HBA1/HBA2, `2BH9` for G6PD, an AlphaFold model for DARC
-  (clearly labeled as predicted, not experimental). The structure toolbar
-  provides a separate residue field. Enter a residue number
-  (or click an example chip) to highlight the exact mutated residue —
-  sticks and spheres in element colors with a floating label, camera zoomed
-  in. The protein cartoon uses the [PyMOL secondary-structure palette](https://3dmol.org/doc/colors.ts.html):
-  helices red, beta sheets yellow, and loops/coils green. The selected chain
-  is opaque and other chains are faded. Predictions preserve this palette;
-  risk colors appear in the result panel. An on-screen legend explains the
-  colors. The four built-in chips are illustrative feature
-  presets, not retrieved variant annotations or validated clinical examples.
-  Their residue highlights illustrate the structures; residue identity is
-  not an input to the classifier.
-  Download (saves the loaded PDB file), Zoom to Residue, and Reset View
-  buttons included. Rotation is manual drag-only — no auto-orbiting camera,
-  no particles/bloom.
-- **Model status** (top right) reports real-data, unverified-data, synthetic
-  demo, or unavailable states. Only real-data models display a held-out AUC.
-  The compact status preserves provenance warnings; further detail is available
-  in its tooltip and prediction notes.
-
-### Run it
-
-```bash
-pip install -r requirements-runtime.txt
-uvicorn webapp.main:app --reload --port 8000
-# open http://localhost:8000
-```
-
-### Generate the substitution matrix (optional)
-
-The substitution landscape panel needs a one-time precompute per gene —
-it needs internet access to `rest.uniprot.org` and `huggingface.co`, so it's
-meant to be run on your own machine, not inside a restricted sandbox:
-
-```bash
-pip install -r scripts/requirements-heatmap.txt
-python scripts/compute_heatmap.py --gene HBB
-# or for every gene the app knows about:
-python scripts/compute_heatmap.py --all
-```
-
-### Deploy to AWS or Hugging Face Spaces
-
-See [the deployment guide](docs/DEPLOYMENT.md) for the current AWS VM
-assessment, a small serving-only container, artifact transfer, and health
-checks. Models and heatmaps are gitignored, so a clean clone does not contain
-them. Copy trusted model artifacts into `outputs/models/` before building.
-The production container refuses to start without a compatible model with
-real data provenance. Viewer failures do not prevent predictions.
-
-For Hugging Face Spaces (Docker SDK):
-
-1. Create a new Space → SDK: **Docker**
-2. Upload the source and trusted model artifacts (the root `Dockerfile` builds it)
-3. The Space exposes the app on port 7860
-
-After training or replacing artifacts, rebuild/restart the app to load the
-new model. Verify `/api/health` and `/api/model-info` after deployment.
-
----
-
-
-## The Problem
-
-Most variant pathogenicity classifiers (ClinVar, CADD, SIFT) are trained predominantly on European cohorts. When applied to West African populations — where sickle-cell trait frequency is 10–40% and malaria-resistance variants are common — they underperform. A community health worker in Accra using these tools gets less reliable predictions than a clinician in London using the same tool.
-
-This project builds a classifier that explicitly incorporates West African population genetics.
-
----
-
-## Project Structure
-
-```
-malaria-sickle-screener/
-│
-├── data/
-│   ├── raw/                  # Downloaded source files (gitignored, see DATA.md)
-│   ├── processed/            # Cleaned feature matrices
-│   ├── external/             # Reference files (gene annotations, etc.)
-│   └── heatmaps/             # Precomputed ESM2 substitution matrices (see below), empty by default
-│
-├── scripts/
-│   ├── compute_heatmap.py         # Generates data/heatmaps/<GENE>.json (run locally, needs internet)
-│   └── requirements-heatmap.txt   # torch/transformers, only needed for the script above
-│
-├── src/
-│   ├── data/
-│   │   ├── download.py       # Automated data download scripts
-│   │   ├── parse_clinvar.py  # ClinVar VCF parser
-│   │   ├── parse_1kg.py      # 1000 Genomes panel parser
-│   │   └── build_features.py # Feature matrix construction
-│   ├── models/
-│   │   ├── train.py          # Model training pipeline
-│   │   ├── evaluate.py       # Evaluation metrics + SHAP
-│   │   └── predict.py        # Inference on new variants
-│   └── utils/
-│       ├── config.py         # Paths, constants, settings
-│       └── logger.py         # Logging setup
-│
-├── webapp/
-│   ├── main.py                # FastAPI app: /api/model-info, /api/predict, static mount
-│   ├── model_service.py       # Model loading, prediction, SHAP explanations
-│   └── static/                # Plain HTML/CSS/JS frontend (index.html, style.css, script.js)
-│
-├── notebooks/
-│   ├── 01_data_exploration.ipynb
-│   ├── 02_feature_engineering.ipynb
-│   ├── 03_model_training.ipynb
-│   └── 04_results_visualization.ipynb
-│
-├── tests/
-│   ├── test_parser.py
-│   ├── test_features.py
-│   └── test_model.py
-│
-├── outputs/
-│   ├── figures/              # SHAP plots, ROC curves, confusion matrices
-│   └── models/               # Saved model files (.pkl)
-│
-├── docs/
-│   └── PROJECT_LOG.md        # Obsidian research log (also in vault)
-│
-├── requirements.txt
-├── setup.py
-├── .env.example              # API keys template
-├── .gitignore
-└── README.md
-```
-
----
-
-## Quickstart
-
-### 1. Clone and install
+Run commands from the repository root. Python 3.11 matches the serving
+container. The HTML/CSS/JavaScript frontend has **no Node/npm build step**;
+FastAPI serves it directly.
 
 ```bash
 git clone https://github.com/Trixx4191/malaria-sickle-screener.git
 cd malaria-sickle-screener
-pip install -r requirements.txt
+python3.11 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements-runtime.txt
+python -m uvicorn webapp.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
-### 2. Set up credentials
+Open <http://127.0.0.1:8000>. API documentation is at `/docs` and `/redoc`;
+the schema is at `/openapi.json`. No `.env` file, API key or external data
+download is required to start a local demonstration.
+
+`data/` and `outputs/` are gitignored. A clean clone has no trained artifact:
+without `REQUIRE_REAL_MODEL`, a missing artifact causes the service to fit an
+800-example synthetic demonstration model in memory. The UI labels it as
+synthetic and withholds test AUC. A present but unreadable or incompatible
+artifact causes startup to fail; it does not fall back to a demonstration.
+
+To serve an existing research model, obtain the trusted matching artifact and
+its metadata from the project maintainer and place them at:
+
+```text
+outputs/models/variant_screener_v1.pkl
+outputs/models/model_meta.json
+```
+
+The bundle contains the estimator, feature order, provenance and evaluation
+metadata. Install the matching scikit-learn version (currently pinned to
+`1.9.0`) and start in strict mode:
 
 ```bash
-cp .env.example .env
-# Edit .env with your API keys (see SETUP.md for instructions)
+REQUIRE_REAL_MODEL=true MODEL_N_JOBS=1 python -m uvicorn webapp.main:app --host 127.0.0.1 --port 8000
 ```
 
-### 3. Download the data
+Strict mode requires a compatible bundle marked `data_provenance: "real"`.
+Restart after replacing a bundle: models load at process startup.
+See [deployment](docs/DEPLOYMENT.md) for artifact transfer and production setup.
 
-```bash
-python src/data/download.py --dataset all
-# This fetches: ClinVar, 1000 Genomes panel, CADD scores
-# MalariaGEN requires manual registration (see docs/DATA.md)
-```
+## Current interface
 
-### 4. Build the feature matrix
+Select a gene, set its region and three numerical annotations, then select
+**Score variant**. Changing an annotation clears the previous result until
+rescored. The four presets immediately score illustrative feature values;
+they do not fetch or identify specific variants.
 
-```bash
-python src/data/build_features.py
-```
+The gene strip displays Ensembl 116 / GRCh38 gene spans. The structure panel
+loads `2HHB` for the globins, `2BH9` for G6PD and an AlphaFold model for
+ACKR1/DARC. **Residue**, **Focus**, **Reset** and **PDB file** control the viewer.
+Residue selection, gene coordinates and structure data do not enter the
+classifier. Predictions continue if external structure services are unavailable.
 
-### 5. Train the model
+Results show the model percentage, a tier, rule-based notes and expandable
+heuristic feature weights. These weights are not per-prediction SHAP values.
+The optional **Amino acid substitutions** panel appears only when a gene's
+precomputed JSON is available; [generate maps separately](docs/HEATMAPS.md).
 
-```bash
-python src/models/train.py --model random_forest
-```
+## Recorded model results
 
-### 6. Run the web UI
+The local model metadata records the corrected **24 October 2026** training
+run, using **1,805** real-feature variants built on 16 July 2026. These are
+computational evaluation results, not outcomes from clinic users.
 
-```bash
-uvicorn webapp.main:app --reload --port 8000
-# open http://localhost:8000
-```
+| Metadata field | Recorded value |
+| --- | --- |
+| Saved model | Random Forest, 200 trees, maximum depth 10 |
+| Training / held-out test variants | 1,444 / 361 |
+| Held-out test AUC-ROC | 0.9825 |
+| Five-fold training CV AUC | 0.9700 ± 0.0052 |
+| CV method | Stratified training folds; SMOTE fitted within each fold |
+| Held-out AFR-frequency subset (`allele_freq_afr > 0.01`) | 6 variants, all benign; AUC unavailable |
 
----
-
-## Data Sources
-
-| Dataset | What it provides | Access | Size |
-|---|---|---|---|
-| ClinVar | Pathogenicity labels | Free, no key | ~800 MB |
-| 1000 Genomes Project | AFR allele frequencies | Free, no key | ~2 GB (subset) |
-| CADD scores | Deleteriousness scores | Free, no key | ~80 GB (use API) |
-| MalariaGEN Pf7 | Ghana malaria genomics | Free registration | ~5 GB |
-| gnomAD v4 | Population frequencies | Free API | API only |
-
-See `docs/DATA.md` for download instructions for each.
-
----
-
-## API Keys Required
-
-| Service | Purpose | How to get | Cost |
-|---|---|---|---|
-| NCBI E-utilities | ClinVar programmatic download | Register at ncbi.nlm.nih.gov/account | Free |
-| gnomAD GraphQL | Population frequency queries | No key needed (public API) | Free |
-| MalariaGEN | Pf7 dataset access | Register at malariagen.net/data | Free |
-| Hugging Face | Deploy the FastAPI app (Docker SDK) | hf.co/join | Free |
-
-No paid APIs required. Total cost: $0.
-
----
-
-## Data Provenance & Known Issues
-
-Real gnomAD/CADD data is the default, enforced behavior of this pipeline, not
-an opt-in — `build_features.py` refuses to build a placeholder-only matrix
-unless you explicitly pass `--allow-fake`, and every matrix it produces is
-stamped with a `data_provenance` field (`real` / `synthetic_placeholder`)
-that flows through training into the saved model, `model_meta.json`, and the
-web UI's status bar.
-
-**Known issues, open as of the last real-data run:**
-
-- **Historical cross-validation and AFR-subset results are withdrawn.** CV
-  previously applied SMOTE before splitting into folds, and the AFR subset
-  included training rows. The 24 October 2026 run recomputed CV correctly;
-  its held-out AFR subset is too small and single-class for AUC. A frequency threshold
-  does not itself establish a West African validation cohort.
-- **372 of 2,177 ClinVar variants (17%) have no CADD score** and are dropped
-  from the training matrix rather than faked. Most are large deletions or
-  malformed `ref==alt` self-substitution rows (a ClinVar/parsing artifact
-  worth investigating in `parse_clinvar.py`, not yet root-caused).
-- **`conservation_phylop` is a CADD-derived proxy**, not real UCSC phyloP —
-  documented intentionally in `docs/DATA.md`, not a bug, but worth real
-  phyloP if you want a cleaner feature set.
-- **DARC has no experimental structure** — the structure panel uses an
-  AlphaFold-predicted model, clearly labeled as such in the UI.
-
----
+The recorded feature matrix contains HBB (1,050), G6PD (523), HBA2 (130) and
+HBA1 (102): 1,199 benign and 606 pathogenic variants before oversampling.
+DARC is selectable in the app but has no variants in this recorded matrix.
+The earlier AFR-subset AUC of 1.000 and cross-validation that resampled before
+fold splitting are withdrawn. The frequency subset is not an independently
+validated West African cohort. Inspect `/api/model-info` for the model actually
+loaded by a running instance; a replacement artifact may report other results.
 
 ## Methods
 
-1. **Variant features**: allele frequency in AFR populations (1000 Genomes), CADD deleteriousness score, gene region (exonic/intronic/UTR), conservation score (phyloP), HBB gene flag
-2. **Labels**: ClinVar clinical significance — pathogenic/likely pathogenic = 1, benign/likely benign = 0
-3. **Class imbalance**: SMOTE oversampling (pathogenic variants are rare)
-4. **Model**: Random Forest (200 trees, max_depth=10), compared against Logistic Regression baseline
-5. **Explainability**: SHAP TreeExplainer — feature importance per prediction
-6. **West Africa validation**: separate evaluation on variants with AFR allele frequency > 0.01
+1. The parser selects GRCh38 ClinVar records with exact target-gene matches
+   and supported benign/likely benign or pathogenic/likely pathogenic labels.
+2. Feature building queries gnomAD v4 genome AFR frequencies and CADD
+   GRCh38-v1.7 scores, using local caches. The downloaded 1000 Genomes sample
+   panel is reference material; it does not supply the current model frequencies.
+3. The six features are `allele_freq_afr`, `cadd_score`, `gene_region`,
+   `conservation_phylop`, `is_hbb` and `review_stars`. Conservation is a
+   CADD-derived proxy rather than measured phyloP. At serving time,
+   `review_stars` is fixed to 1 and gene identity only changes `is_hbb`.
+4. A stratified 80/20 split separates training from the held-out test set.
+   The forest uses fold-local SMOTE during training CV and SMOTE on the full
+   training split for the final fit. Logistic regression is an optional baseline.
+5. Serving returns the estimator's class-1 score and applies fixed display
+   thresholds: below 40% benign, 40% to below 75% uncertain, 75% and above
+   pathogenic. These are application tiers. Probability calibration and clinical
+   classification criteria are not implemented.
 
----
+See [data limitations](docs/DATA.md), including missing CADD rows, inferred
+regions, ambiguous gnomAD zeros, cache versioning and synthetic-mode behavior.
+Offline SHAP plotting is separate from web predictions and does not produce
+additional held-out validation metrics.
 
-## Competition Submissions
+## Rebuild the research model
 
-- [ ] Regeneron ISEF — Computational Biology & Bioinformatics track
-- [ ] Conrad Challenge — Health & Nutrition track
-- [ ] Journal of Emerging Investigators (JEI) — paper submission
+Use a separate environment with the full research dependencies. Download,
+feature-build and training commands can overwrite generated files and the
+existing model; preserve any artifacts needed for comparison before running.
 
----
+```bash
+python -m pip install -r requirements.txt
+python src/data/download.py --dataset all
+python src/data/parse_clinvar.py
+python src/data/build_features.py
+python src/models/train.py --model all
+```
 
-## Faculty Connection
+`--dataset all` downloads ClinVar and the 1000 Genomes sample panel only;
+feature building makes the per-variant gnomAD and CADD calls. The default
+feature build requires remote lookups or usable cached values and drops
+unresolved rows. No MalariaGEN registration is needed for this pipeline.
+For the optional offline SHAP step on a forest, run
+`python src/models/evaluate.py`; see its limitations in [DATA.md](docs/DATA.md).
 
-This project is inspired by and benchmarked against:
-- **Debora Marks Lab (Harvard)** — popEVE variant effect prediction model
-- **MalariaGEN Consortium** — Pf7 West African genomics data
+The runner `python src/pipeline/run_pipeline.py --model all --skip-evaluate`
+combines download, feature construction and training. Omit `--skip-evaluate`
+to attempt the separate SHAP plotting step. Use [the data guide](docs/DATA.md)
+for reuse flags and cache refreshes when changing source releases.
 
----
+## Deployment and verification
 
-## Author
+The configured project URL is
+[malaria-sickle-screener.13-62-14-125.sslip.io](https://malaria-sickle-screener.13-62-14-125.sslip.io).
+Availability was not rechecked during this documentation review. The
+[deployment guide](docs/DEPLOYMENT.md) covers the recorded Lightsail setup,
+current commands and Hugging Face Docker Spaces. The Dockerfile uses port
+**7860**, one Uvicorn worker and strict real-model mode.
 
-**Alhassan Salifu**  |  Ghana
-[trixx4191@gmail.com] | [github.com/Trixx4191]
+Existing regression checks run from the repository root after installing the
+full research dependencies:
 
----
+```bash
+python -m pip install pytest httpx
+python -m pytest -q
+node --test tests/test_ui.mjs
 
-## License
+# Against an already-running real-data model (136 valid prediction requests):
+python scripts/smoke_deployment.py --base-url http://127.0.0.1:8000
+```
 
-MIT License. Data sources retain their own licenses — see `docs/DATA.md`.
+The smoke script requires a real-data model and exercises routes, validation
+and prediction ranges. It intentionally fails against a synthetic demo.
+Its latency figures are request timings, not a concurrent load benchmark.
+
+## Repository layout
+
+```text
+webapp/                  FastAPI backend and served static frontend
+src/data/                Downloads, ClinVar parsing and feature construction
+src/models/              Training and offline explanation plots
+src/pipeline/            Pipeline runner
+src/utils/config.py      Paths, target genes, source URLs and model settings
+src/ui/app.py            Legacy Gradio prototype; outside the current run path
+scripts/                 Heatmap precompute, VM inspection and deployment smoke check
+deploy/                  systemd, Nginx, certificate hook and runtime lock snapshot
+docs/                    Usage, API, deployment, data and reference guides
+tests/                   API, model, parser, training and frontend regression checks
+data/                    Local source data, caches and heatmaps (gitignored)
+outputs/                 Local models, metadata and figures (gitignored)
+```
+
+## Author and licensing
+
+Built by **Alhassan Salifu**, Accra, Ghana.
+[GitHub](https://github.com/Trixx4191) ·
+[Email](mailto:trixx4191@gmail.com)
+
+Data sources and dependencies retain their own licenses and access terms.
+The repository currently has no standalone `LICENSE` file; the earlier README
+reference to an included MIT license was unsupported.

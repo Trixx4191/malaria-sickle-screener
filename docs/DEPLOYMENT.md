@@ -1,27 +1,38 @@
 # Deploying the variant screener
 
-## Live deployment — 24 October 2026
+Last checked against the repository: **30 October 2026**. Server observations
+below are dated deployment records from 24–25 October, not a fresh check of
+the public site. For the interface and inputs, see [Usage](USAGE.md),
+[API](API.md), and [Gene reference](GENE_REFERENCE.md).
+
+For current run instructions, start at [Prepare the artifacts](#prepare-the-artifacts).
+Deployment checks establish software behavior. The app remains labeled
+**research use only, not validated for clinical use**; clinic usage feedback
+does not change that status or the retrospective model metrics.
+
+## Recorded deployment — 24 October 2026
 
 **URL:** https://malaria-sickle-screener.13-62-14-125.sslip.io
 
-The app runs on `tidewatch-college-web-02` in `eu-north-1`, using its existing
+The app was deployed on `tidewatch-college-web-02` in `eu-north-1`, using its existing
 reserved IP `13.62.14.125`. The free hostname resolves to that IP. Its separate
 Nginx host redirects HTTP to HTTPS and proxies to `127.0.0.1:7860`.
 
-The systemd service is `variant-screener.service`, enabled at boot. Release
-`20261024T200915Z` is installed in
+The recorded systemd service is `variant-screener.service`, enabled at boot. Release
+`20261024T200915Z` was installed in
 `/opt/variant-screener/releases/20261024T200915Z`; `/opt/variant-screener/current`
 points to it. Each release has a fresh virtualenv; this deployment uses
 Ubuntu 24.04's Python 3.12. The exact installed packages are recorded in
 `deploy/requirements-runtime.lock` and in the deployed release.
 
-Let's Encrypt HTTPS is active, with certificate expiry 22 January 2027.
-`certbot.timer` renews it automatically, and a successful-renewal hook checks
+Let's Encrypt HTTPS was verified with an original certificate expiry of
+22 January 2027. Check `sudo certbot certificates` for the current expiry.
+`certbot.timer` was configured to renew it automatically, and a successful-renewal hook checks
 and reloads Nginx. A renewal dry run including that hook passed. Port 443 was
 enabled for HTTPS; the temporary SSH access rule was removed after deployment.
 The two existing app services and their Nginx routes were preserved.
 
-## Shared VM project URLs — 25 October 2026
+## Recorded shared VM project URLs — 25 October 2026
 
 | Project | Public HTTPS URL | Service / local port |
 | --- | --- | --- |
@@ -48,16 +59,16 @@ rival-analysis startup requests can also return 429 under the existing F1
 compute limit. These application/startup issues were recorded without changing
 F1 source or weakening its request limits during the hostname setup.
 
-## Gene reference UI: 25 October 2026
+## Recorded gene reference UI: 25 October 2026
 
-The current UI version is `gene-ui-21ae178287fc`. It uses a paper-and-ink
+The last recorded published UI version is `gene-ui-21ae178287fc`. It uses a paper-and-ink
 genetics reference layout, an actual GRCh38 locus strip, compact annotation
 presets, and short labels. User-visible em dashes were removed, including
 those in rendered API notes and structure descriptions. The gene metadata
 uses Ensembl release 116; its sources and coordinate conventions are in
 `docs/GENE_REFERENCE.md`.
 
-Live assets are `style.gene-ui-21ae178287fc.css` and
+Recorded production assets are `style.gene-ui-21ae178287fc.css` and
 `script.gene-ui-21ae178287fc.js`. The previous index and publication record
 are saved under `/opt/variant-screener/ui-backups/gene-ui-21ae178287fc/`.
 The model and backend process were preserved. All 12 UI regression checks
@@ -91,7 +102,8 @@ manual residue controls, keyboard focus, responsive canvas sizing, color-key
 popovers, and desktop/mobile layouts without JavaScript or network errors.
 
 The serving app is FastAPI, static HTML/CSS/JS, and a six-feature scikit-learn
-model. It does not need a GPU, Jupyter, raw ClinVar downloads, or request-time
+model. It has no frontend build step and does not need a GPU, Jupyter, AWS
+credentials, raw ClinVar downloads, or request-time
 ESM2 inference. Train models and generate optional heatmap JSON on a development
 machine, then transfer those artifacts for serving.
 
@@ -115,9 +127,9 @@ loopback port 8100), with Nginx on port 80. Port 7860 was unused. Docker was
 not present. The temporary SSH firewall addition was removed and the original
 rules verified after the check.
 
-**Recommendation: reuse this VM for a light-traffic deployment**, using a
-separate service, loopback port 7860, and a dedicated Nginx virtual host.
-Reassess if existing apps or prediction traffic increase substantially.
+This assessment supported reusing the VM for a light-traffic deployment,
+with a separate service, loopback port 7860, and a dedicated Nginx virtual host.
+Reassess present memory, disk, and traffic before another deployment.
 
 The inference model is approximately 2.45 MiB. Start with one Uvicorn worker
 and one model job. More workers duplicate the scientific Python runtime and
@@ -131,23 +143,31 @@ p95 was 59.7 ms. This is a local test, not a VM load test or a throughput
 guarantee. Leave at least 512 MiB available for the worker and margin,
 preferably about 1 GiB before adding the service.
 
-The local development virtualenv has since been recreated and verified with
-Python 3.14. Deployment creates a fresh environment on the host rather than
-copying a local `venv/`.
+Deployment creates a fresh environment on the host rather than copying a
+local virtualenv. The recorded native environment is Python 3.12; the
+container uses Python 3.11. Local environment details are not a guarantee of
+compatibility on another host.
 
 ## Prepare the artifacts
 
-These files are intentionally ignored by Git and must be copied from a trusted
-training run before building a production image:
+Run commands from the repository root. These files are intentionally ignored
+by Git and must be copied from a trusted training run before building an image
+or starting a production service:
 
 ```text
 outputs/models/variant_screener_v1.pkl
 outputs/models/model_meta.json
 ```
 
-Optional substitution matrices go in `data/heatmaps/<GENE>.json`. The current
-checkout has no generated matrices; the matrix panel stays hidden until those
-files are supplied. The runtime never downloads or trains an ESM2 model.
+The pickle bundle supplies the model, feature order, provenance, and normally
+its evaluation metadata. `model_meta.json` supplies metadata only when the
+bundle has none embedded. Keep the pair from the same training run; editing
+the sidecar neither replaces the model nor changes bundle provenance.
+
+Optional substitution matrices go in `data/heatmaps/<GENE>.json`, using
+`DARC.json` for the gene displayed as ACKR1. Until those files are supplied,
+the endpoint returns 404 and the matrix panel stays hidden. The runtime never
+downloads or trains an ESM2 model. See [Data](DATA.md) for generation instructions.
 
 The existing model was saved with scikit-learn 1.9.0. The runtime requirement
 pins that version; update it together with a newly trained artifact. Scikit-learn
@@ -155,29 +175,65 @@ does not support loading persisted models across different library versions.
 Only load trusted pickle/joblib files.
 
 Production starts with `REQUIRE_REAL_MODEL=true`: missing, corrupt,
-incompatible, or placeholder-trained artifacts cause startup to fail. A local
-development session without this setting may use the explicitly labeled
-synthetic demo when no model exists.
+incompatible, placeholder-trained, or unknown-provenance artifacts cause
+startup to fail. Without this requirement, only a **missing** pickle enables
+the explicitly labeled synthetic demo. An existing corrupt or incompatible
+pickle fails rather than becoming a demo. A loaded placeholder or legacy
+bundle can run locally with its provenance warning.
+
+After replacing artifacts, restart every worker (or rebuild/recreate the
+container) to load the new bundle. It is loaded once at startup.
 
 ## Run locally without the research toolchain
 
 ```sh
-python3.11 -m venv .venv
+python3 -m venv .venv
 . .venv/bin/activate
-pip install -r requirements-runtime.txt
+python -m pip install -r requirements-runtime.txt
 REQUIRE_REAL_MODEL=true MODEL_N_JOBS=1 \
-  uvicorn webapp.main:app --host 127.0.0.1 --port 7860 --workers 1
+  python -m uvicorn webapp.main:app --host 127.0.0.1 --port 7860 --workers 1
 ```
+
+Use an available compatible Python interpreter; the recorded container/native
+versions are 3.11/3.12. Open <http://127.0.0.1:7860>. The development command
+`python -m uvicorn webapp.main:app --reload --port 8000` uses port 8000 instead;
+point checks at the port used by your command.
 
 Use `requirements.txt` instead when working on training/data processing. Keep
 the same scikit-learn pin when working with the existing model. The UI's 3D
-viewer requires browser access to 3Dmol, RCSB, and AlphaFold. Prediction remains
-available if those external services fail.
+viewer requires WebGL and browser access to `3dmol.org`, `files.rcsb.org`, and
+`alphafold.ebi.ac.uk`. Prediction remains available if those external services
+fail. Ensembl links open reference records; the prediction endpoint does not
+retrieve variant annotations or perform a clinical lookup.
+
+### Runtime environment and health
+
+| Variable | Local default / production value | Purpose |
+| --- | --- | --- |
+| `REQUIRE_REAL_MODEL` | Unset locally; `true` in Docker/systemd | `1`, `true`, `yes`, or `on` requires a loaded bundle with `real` provenance. |
+| `MODEL_N_JOBS` | `1` | Positive integer applied to models with an `n_jobs` setting. |
+| `OMP_NUM_THREADS` | `1` in Docker/systemd | Limit OpenMP threads. |
+| `OPENBLAS_NUM_THREADS` | `1` in Docker/systemd | Limit OpenBLAS threads. |
+| `MKL_NUM_THREADS` | `1` in Docker/systemd | Limit MKL threads. |
+
+`/api/health` returns `status: "ok"` even in synthetic demo mode. Verify the
+complete response for the recorded research model:
+
+```json
+{"status":"ok","demo_mode":false,"data_provenance":"real"}
+```
+
+`real` describes training-data provenance, not clinical validation. Inspect
+`/api/model-info` for loaded feature order, evaluation metadata, and gene
+keys. Its supported gene keys are `HBB`, `G6PD`, `DARC`, `HBA1`, and `HBA2`;
+ACKR1 remains `DARC` in API requests.
 
 ## Container deployment
 
-The image installs only serving dependencies, runs as an unprivileged user,
-checks `/api/health`, and limits model/native threads. The Docker build context
+The image installs only serving dependencies, runs as UID/GID 10001, starts
+one worker with a concurrency limit of 16, checks `/api/health`, and limits
+model/native threads. The health check checks HTTP success; startup enforces
+real provenance. The Docker build context
 allows only app code, selected model artifacts, and optional heatmap JSON;
 raw data, credentials, virtualenvs, and old frontend dependencies are excluded.
 
@@ -204,6 +260,11 @@ To replace the container, build and verify a separately named candidate on a
 different loopback port before switching the proxy. Keep the previous image
 and artifacts available for rollback.
 
+For a Hugging Face Space, use the **Docker SDK**, supply the serving source
+and trusted model artifacts, and use port **7860**. A Git push alone does not
+supply the ignored model files. The historical verification below covers the
+native VM, not a Space deployment or a completed container build.
+
 ## Native service on the existing VM
 
 The host already runs applications with systemd and Nginx, so deployment uses
@@ -214,34 +275,67 @@ the same approach. The applied service and HTTPS host configuration are in
 For another release, create `/opt/variant-screener/releases/<release>` with
 the runtime source, trusted model artifacts, and optional heatmaps. Create its
 `.venv` on the host and install `deploy/requirements-runtime.lock` to reproduce
-the tested environment. Precreate `data/raw`, `data/processed`, `data/external`,
+the recorded Ubuntu 24.04 / Python 3.12 environment. Verify compatibility for
+a different Python/platform before treating this lock as reproducible there.
+Precreate `data/raw`, `data/processed`, `data/external`,
 `outputs/figures`, and `outputs/models` so the dedicated `variant-screener`
 account can start with read-only source/model files. Verify the candidate on
 a separate loopback port before switching `current` and restarting the service.
 Keep the previous release for rollback.
 
-The systemd service starts one worker on loopback port 7860 and initially
+The systemd service starts one worker on loopback port 7860 with a concurrency
+limit of 16 and initially
 limits it to 768 MiB RAM and one vCPU to protect the shared host. Confirm
 startup and prediction success before enabling restart on boot or adding
-the Nginx virtual host. For future configuration changes, validate Nginx with
+the Nginx virtual host. If the service unit changes, run
+`sudo systemctl daemon-reload` before restarting it. Record the old `current`
+symlink target before switching releases. For a full release rollback,
+restore that target, restart the service, and repeat health/model/smoke checks.
+For future configuration changes, validate Nginx with
 `nginx -t` before reload. Keep the port-80 ACME challenge location reachable
-so certificate renewals continue to work. The current Lightsail firewall
-permits public HTTP and HTTPS and restricts SSH to the original approved IP.
+so certificate renewals continue to work. The recorded Lightsail firewall
+permitted public HTTP and HTTPS and restricted SSH to the original approved
+IP; verify current rules on the host.
 
 Useful operations on the host:
 
 ```sh
+readlink -f /opt/variant-screener/current
 sudo systemctl status variant-screener
 sudo journalctl -u variant-screener -n 100 --no-pager
 sudo systemctl restart variant-screener
 sudo nginx -t
 sudo systemctl status certbot.timer
+sudo certbot certificates
 sudo certbot renew --cert-name malaria-sickle-screener --dry-run --run-deploy-hooks --no-random-sleep-on-renew
 ```
 
 The reload hook source is `deploy/renewal-reload-nginx.sh`. Certificate keys
 and ACME account data remain under `/etc/letsencrypt` on the host and are
 excluded from source archives.
+
+### Static-only publication
+
+The repository index references `style.css` and `script.js`. The recorded
+production publication used versioned filenames; no repository build step
+generates those names. When publishing static files only, upload matching
+assets first, verify checksums, then atomically replace the index. Preserve
+the old index and its assets so cached HTML and rollback still work. Check
+predictions, provenance display, all five gene records, optional viewer
+failure, keyboard focus, and desktop/mobile layout after publication.
+
+The latest recorded backup is
+`/opt/variant-screener/ui-backups/gene-ui-21ae178287fc/`. Its saved index
+restores the preceding UI if that backup and the referenced assets remain:
+
+```sh
+sudo cp /opt/variant-screener/ui-backups/gene-ui-21ae178287fc/index.html /opt/variant-screener/current/webapp/static/index.rollback.new
+sudo mv /opt/variant-screener/current/webapp/static/index.rollback.new /opt/variant-screener/current/webapp/static/index.html
+```
+
+Inspect backup contents and the active release before using an old path.
+Static rollback does not revert the model or backend. A model/backend change
+requires a worker restart; a static-only publication does not reload a model.
 
 ## Capacity check
 
@@ -270,11 +364,27 @@ The actual held-out AFR-frequency subset contains only 6 benign variants, so
 its AUC is omitted. Historical AFR AUC = 1.000 remains withdrawn. The previous
 local artifact is backed up under `outputs/models/backups/`.
 
-## Verification performed
+## Troubleshooting
+
+| Symptom | Check |
+| --- | --- |
+| Startup says the trained model is missing | Supply the trusted pickle at `outputs/models/variant_screener_v1.pkl` in the release/image. |
+| Startup says the trained model cannot load | Check the artifact and matching scikit-learn version. An incompatible existing pickle does not trigger a demo. |
+| Production refuses provenance | Use a bundle from a real-feature training run. Editing `model_meta.json` does not change bundle provenance. |
+| Health is OK but the page says demo/unverified | Inspect `demo_mode`, `data_provenance`, and `/api/model-info`; HTTP 200 alone is insufficient. |
+| ACKR1 API request fails | Use `DARC` as the API gene key and optional heatmap filename. |
+| Heatmap returns 404 | Expected until that gene's JSON has been generated and copied. |
+| Protein viewer fails but scoring works | Check WebGL and browser access to the external viewer/structure domains. |
+| Prediction returns 422 | Check required fields, accepted gene/region values, and numeric bounds in [API](API.md). |
+| Proxy returns 502 or the worker restarts | Inspect logs, listener port, artifact loading, and memory limits. |
+| Requests return 503 under concurrent load | The worker has a concurrency limit of 16; inspect load and latency before adjusting capacity. |
+| Browser shows stale CSS/JS | Check the index's asset filenames; upload matching files before replacing the index. |
+
+## Recorded verification — 24–25 October 2026
 
 An isolated Python 3.11 environment with the matching scikit-learn version
-passed all 17 Python tests and the real-model API/static-file smoke checks.
-The 11 UI behavior checks pass with `node tests/test_ui.mjs`; they cover
+passed the then-current 17 Python tests and real-model API/static-file smoke
+checks on 24 October. The UI behavior checks cover
 external viewer failure, both heatmap schemas, AlphaFold URL discovery,
 scientific colors, stale predictions, and residue-selection races.
 Nginx and systemd configurations passed validation on the actual server.
@@ -282,22 +392,45 @@ The real VM service passed 136 valid prediction cases and rejected 19 invalid
 requests; the same checks passed over public HTTPS. On-VM median/p95 latency
 was 29.2/33.2 ms; this client's public HTTPS median/p95 was 562.7/942.8 ms,
 including network and fresh HTTP connections. These are smoke-test observations,
-not throughput guarantees.
+not throughput guarantees. These archived records do not establish present
+health, capacity, or certificate status. Local ignored
+`outputs/deployment/<release-or-ui-version>/` directories hold manifests,
+publication records, and reports when preserved; they are not in a clean clone.
 
 An actual Chromium browser verified all five structures and four prediction
 presets over HTTPS, including the real 3Dmol CDN, RCSB structures, and live
 AlphaFold metadata/model downloads. It found no JavaScript errors, failed
 external requests, or mobile overflow at 390 px. Service checks reported zero
-restarts and no application exceptions. Docker is unavailable locally and was
-not needed for this native deployment; its image remains unbuilt.
+restarts and no application exceptions. Docker was unavailable locally
+during this native deployment; its image was not built for that check.
 
-To run the Python checks after installing research dependencies plus `pytest`
-and `httpx`, use `python -m pytest -q`. The temporary verification environment
-does not replace the repository's existing `venv/`. To check a running release:
+## Verification commands
+
+Run checks in a development environment after installing research dependencies
+plus `pytest` and `httpx`:
 
 ```sh
+python -m pip install -r requirements.txt
+python -m pip install pytest httpx
+python -m pytest -q
+node tests/test_ui.mjs
+```
+
+The UI tests use Node's built-in test runner, with no npm installation step.
+They cover simulated browser behavior and do not replace a real WebGL/browser
+check. To check a running release with a real-provenance model:
+
+```sh
+python3 scripts/smoke_deployment.py --base-url http://127.0.0.1:7860
 python3 scripts/smoke_deployment.py --base-url https://malaria-sickle-screener.13-62-14-125.sslip.io
 ```
+
+The current smoke script checks real-model health/metadata, **136 valid
+prediction cases**, **19 invalid requests**, static/OpenAPI responses,
+structure records, and optional heatmap availability. Missing optional
+heatmaps are accepted. It sends illustrative annotations without patient
+records. It does not fetch browser-side external structures, load-test the
+service, or establish clinical accuracy.
 
 References: [Lightsail metrics](https://docs.aws.amazon.com/lightsail/latest/userguide/amazon-lightsail-resource-health-metrics.html),
 [scikit-learn model persistence](https://scikit-learn.org/stable/model_persistence.html).
