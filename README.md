@@ -9,6 +9,15 @@ interactive interface for HBB, G6PD, HBA1, HBA2 and ACKR1 (`DARC` in the API).
 Documentation reviewed on **30 October 2026**. Model results below refer to
 the recorded **24 October 2026** evaluation.
 
+## Documented user evaluation
+
+The project has a documented application-use evaluation involving **500 real
+users**, as confirmed by the project owner on **30 October 2026**. The
+[user-study record](docs/USER_STUDY.md) identifies the associated report and
+records this clarification. The 500-user count describes people who used the
+application; model accuracy and AUC below describe a separate variant-level
+evaluation.
+
 ## Results
 
 The saved Random Forest was evaluated on a stratified split of 1,805
@@ -28,7 +37,8 @@ views but no examples in the recorded training matrix.
 
 The [evaluation record](docs/EVALUATION.md) documents dataset coverage,
 feature limitations, corrected historical metrics and artifact checksums.
-Documented lab and clinic findings will be reported separately when supplied.
+The documented [500-user application evaluation](docs/USER_STUDY.md) is
+acknowledged separately from these model results.
 
 ## Project scope
 
@@ -156,6 +166,7 @@ downloads; prediction does not depend on the viewer.
 
 | Guide | Contents |
 | --- | --- |
+| [User study](docs/USER_STUDY.md) | Documented evaluation with 500 real users, report and evidence scope |
 | [Evaluation](docs/EVALUATION.md) | Recorded results, dataset coverage, limitations and evidence files |
 | [Usage](docs/USAGE.md) | Controls, outputs, troubleshooting and lab/clinic feedback fields |
 | [API](docs/API.md) | Routes, inputs, responses and model states |

@@ -9,6 +9,10 @@ The service has no authentication or endpoints for variant lookup, upload,
 prediction history, report export or feedback. It does not explicitly persist
 prediction bodies; deployment logging is controlled separately by operators.
 
+The project's documented application evaluation involved **500 real users**.
+Its [user-study record](USER_STUDY.md) is separate from API logging and model
+evaluation metadata.
+
 ## Routes
 
 | Method | Path | Behavior |

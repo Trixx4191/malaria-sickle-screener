@@ -1,6 +1,8 @@
 # Deployment history
 
 This archive preserves screener deployment records from **24–25 October 2026**.
+It also records the **30 October 2026** clarification acknowledging the
+project's documented evaluation with **500 real users**.
 It does not establish present availability, capacity, certificate status or
 clinical performance. Use the [deployment guide](DEPLOYMENT.md) for current
 commands and [Evaluation](EVALUATION.md) for the model results and limitations.
@@ -99,3 +101,16 @@ placed under `/opt/variant-screener/ui-backups/gene-ui-21ae178287fc/`.
 The corresponding local evidence directory is
 `outputs/deployment/gene-ui-21ae178287fc/`; it includes the UI manifest,
 publication record, gene-reference verification and browser reports.
+
+## 30 October 2026: documented user evaluation acknowledged
+
+The project owner confirmed that the report is based on documented use of
+the application by **500 real users**. See the [user-study record](USER_STUDY.md)
+for the report reference and evidence scope. This date records the clarification;
+it does not establish when the user evaluation took place.
+
+The 500 users are a human participation count. The automated prediction,
+browser and deployment checks above are separate engineering records, and the
+1,805 variants in the model evaluation are separate variant records. Neither
+the participation count nor the deployment checks supply clinical diagnostic
+accuracy or establish a patient validation cohort.

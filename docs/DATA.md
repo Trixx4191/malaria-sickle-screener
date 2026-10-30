@@ -6,6 +6,11 @@ data downloads and retraining are separate workflows. See the
 [README](../README.md) for installation and [DEPLOYMENT.md](DEPLOYMENT.md)
 for serving model artifacts.
 
+The documented application evaluation involved **500 real users**; see the
+[user-study record](USER_STUDY.md). That participation count describes
+application use, separately from the 1,805 variant records used for model
+development and evaluation.
+
 ## Sources
 
 | Source | Current role | Local file or cache |

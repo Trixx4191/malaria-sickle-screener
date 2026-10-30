@@ -1,9 +1,16 @@
 # Evaluation record
 
-Repository and local artifacts reviewed on **30 October 2026**. Metrics below
-come from the recorded **24 October 2026** evaluation. The review checked
-artifact hashes, metadata and dataset counts; it did not retrain the model
-or recompute its held-out predictions.
+Repository and local artifacts reviewed on **30 October 2026**. Model metrics
+below come from the recorded **24 October 2026** evaluation. The initial
+documentation review checked artifact hashes, metadata and dataset counts
+without retraining or recomputing predictions. The subsequent report review
+recomputed the point estimates against the retained dataset and saved model.
+
+The project also has a **documented application-use evaluation involving 500
+real users**, confirmed by the project owner on **30 October 2026**. See the
+[user-study record](USER_STUDY.md) for the report and participant-count
+clarification. User participation, model evaluation and deployment checks
+are recorded separately below.
 
 ## Recorded results
 
@@ -57,18 +64,24 @@ current gnomAD client; these counts do not establish observed absence.
 ## Limitations
 
 - **Population scope:** gnomAD genome AFR frequency is an annotation, not a
-  cohort of West African patients. No independent clinical, geographic,
-  temporal or gene-held-out evaluation is recorded. The held-out
+  cohort of West African patients. The recorded model results use a
+  stratified variant split rather than an independent clinical, geographic,
+  temporal or gene-held-out evaluation. The documented 500-user application
+  evaluation has a separate participant denominator. The held-out
   high-frequency subset has only six benign variants.
 - **Feature dependence:** `conservation_phylop` equals
   `clip(cadd_score / 40, -3, 3)` in every retained row. It is a CADD-derived
   proxy, not an independent phyloP measurement. No CADD-only or frequency
   ablation is recorded, so the added value of AFR frequency is unmeasured.
 - **Review quality at serving:** training and evaluation use ClinVar-derived
-  `review_stars` values; the app fixes this input to 1. No reevaluation with
-  that serving value fixed is recorded. Review status
-  comes from the same source as the labels; its contribution requires a
-  separate ablation before attributing performance to molecular annotations.
+  `review_stars` values; the app fixes this input to 1. The supplied report's
+  sensitivity analysis, confirmed during the report review, gives AUC
+  0.96515 and binary accuracy 94.18% with that serving value fixed, compared
+  with historical AUC 0.98249 and accuracy 94.74%. Six binary predictions and
+  21 display tiers change. These are internal variant-level comparisons.
+  Review status comes from the same source as the labels; its contribution
+  requires a separate ablation before attributing performance to molecular
+  annotations.
 - **Gene and input coverage:** only the HBB flag encodes gene identity.
   Otherwise identical inputs produce the same score for G6PD, HBA1, HBA2
   and DARC. DARC has no training rows. The API accepts regions and numerical
@@ -76,8 +89,10 @@ current gnomAD client; these counts do not establish observed absence.
   does not establish model performance throughout that range.
 - **Split and uncertainty:** the split is stratified by label at the row
   level. Related variants, loci and feature-vector groups are not held out
-  as groups. No patient-level generalization, confidence intervals or
-  probability calibration is reported.
+  as groups. The supplied report includes bootstrap intervals, but its
+  resampling settings are not specified sufficiently to reproduce those
+  intervals. The model results do not establish patient-level generalization
+  or probability calibration.
 - **Interpretation:** score thresholds and notes are application rules.
   The feature bars are heuristic weights. Protein structures and optional
   ESM2 maps are separate reference tools; they do not validate a prediction.
@@ -141,11 +156,20 @@ heatmap JSON files are present in the reviewed artifact set.
 
 ## Lab and clinic reports
 
-No lab or clinic outcome measurements are included in the current evidence
-set. Reports supplied after this review should identify the source document,
-dates, software/model version, task, sample-selection method and denominators.
-Separate usability and workflow observations from comparisons against an
-independent variant classification.
+The project owner confirms that the evaluation associated with
+`Revised_Malaria_Sickle_Cell_Screener_Report.docx` involved **500 real users**
+and was documented. The [user-study record](USER_STUDY.md) links the updated
+project report and records the clarification received on **30 October 2026**.
+The participant count acknowledges actual application use; the accuracy and
+AUC in this evaluation record use the 361-variant historical holdout.
+
+Study dates, participant roles and sites, recruitment methods and numerical
+user-outcome summaries are not specified in the material available for this
+documentation update. The 30 October date records the clarification, rather
+than assigning a date to the study. Further summaries should identify the
+source document, dates, software/model version, task, sample-selection method
+and denominators. Describe usability and workflow observations separately
+from comparisons against an independent variant classification.
 
 Report completed, failed, repeated and excluded attempts alongside any
 agreement measurements. Describe the reference method and uncertainty before

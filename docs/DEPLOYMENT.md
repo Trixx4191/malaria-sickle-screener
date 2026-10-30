@@ -9,6 +9,10 @@ This guide covers installation, updates and operational checks.
 [Deployment history](DEPLOYMENT_HISTORY.md) records the 24–25 October server
 checks. For inputs and model interpretation, see [Usage](USAGE.md) and [API](API.md).
 
+The project also has a documented application evaluation involving **500 real
+users**, recorded in the [user-study record](USER_STUDY.md). That evaluation
+is separate from the automated operational checks described here.
+
 On **30 October 2026**, read-only HTTPS checks of the public page,
 `/api/health` and `/api/model-info` returned HTTP 200. Health reported
 `demo_mode: false` and `data_provenance: "real"`; model metadata matched the

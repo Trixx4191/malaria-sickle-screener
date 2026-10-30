@@ -208,6 +208,9 @@ pipeline uses ClinVar labels, gnomAD AFR frequencies and CADD-derived features.
 West African clinical performance has not been established. Use the current
 FastAPI interface for model-state checks and supported serving behavior.
 </p>
+<p style="font-size:0.9rem;color:#444;line-height:1.6;margin-bottom:1rem">
+The project's documented application evaluation involved 500 real users.
+</p>
 """
 
 MODEL_INFO = f"""

@@ -4,6 +4,12 @@ This guide covers the FastAPI interface reviewed on 30 October 2026. Start
 with the [README](../README.md#run-locally) for installation and model loading.
 Research results and their scope are documented in [EVALUATION.md](EVALUATION.md).
 
+The project's documented application evaluation involved **500 real users**,
+as confirmed by the project owner on 30 October 2026. The
+[user-study record](USER_STUDY.md) acknowledges that participation and the
+associated report. This user count is separate from the 1,805 variants used
+for model development and evaluation.
+
 ## Before scoring
 
 Prepare annotations for the same variant and genome build; the research
@@ -112,10 +118,13 @@ See [HEATMAPS.md](HEATMAPS.md) for generation and interpretation.
 
 ## Record lab and clinic feedback
 
-Use these fields when documenting lab or clinic use. Keep usability and
-workflow observations separate from comparisons against independent variant
-classifications. The [evaluation record](EVALUATION.md#lab-and-clinic-reports)
-tracks the evidence supplied for review.
+The [500-user study record](USER_STUDY.md) acknowledges the documented user
+evaluation. Use the fields below when preparing follow-up documentation or
+recording lab or clinic use; the participation count alone does not specify
+the users' roles or study settings. Keep usability and workflow observations
+separate from comparisons against independent variant classifications. The
+[evaluation record](EVALUATION.md#lab-and-clinic-reports) describes how these
+forms of evidence relate to the model evaluation.
 
 | Field | What to record |
 | --- | --- |
@@ -129,6 +138,7 @@ tracks the evidence supplied for review.
 | Counts | Sessions/variants attempted, succeeded and failed, plus how cases were selected; specify repeat attempts |
 
 Share de-identified observations and keep identifiable source records outside
-public version control. Feedback collection and case export are not implemented.
+public version control. Use separate study records for documentation;
+in-app feedback collection and case export are not implemented.
 Obtain the source revision and artifact hash from the operator; the API does
 not include them, and an AUC value does not identify a model version.
