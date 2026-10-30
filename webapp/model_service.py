@@ -1,11 +1,11 @@
 """
-model_service.py — loads the trained variant_screener bundle if it exists,
-otherwise trains a small synthetic fallback model on startup so the web UI
-is fully interactive without requiring the real data pipeline to have run.
+model_service.py — load a trusted saved bundle once at process startup.
 
-Demo mode is always reported via /api/model-info so the frontend can label
-it clearly in the status bar — it is never silently presented as the real
-research result.
+Only a missing artifact enables an in-memory synthetic demo when strict mode
+is off. An unreadable or incompatible artifact fails startup. Enabling
+REQUIRE_REAL_MODEL requires a compatible bundle with real feature provenance.
+Model state is reported by health, model-info and prediction responses.
+See docs/API.md and docs/DEPLOYMENT.md; real provenance is not clinical validation.
 """
 
 import os
@@ -31,13 +31,13 @@ FEATURE_ORDER = [
 GENE_REGION_MAP = {"exonic": 2, "utr": 1, "intronic": 0}
 HBB_GENES = {"HBB", "HBB-LCR"}
 
-# PDB / AlphaFold structures for the "04 / STRUCTURE" panel.
+# Reference structures for the "02 / Protein structure" panel; not model inputs.
 STRUCTURE_REGISTRY = {
     "HBB":  {"pdb_id": "2HHB", "chain": "B", "source": "experimental", "label": "Deoxyhemoglobin (T-state), chain B = beta-globin"},
     "HBA1": {"pdb_id": "2HHB", "chain": "A", "source": "experimental", "label": "Deoxyhemoglobin (T-state), chain A = alpha-globin"},
     "HBA2": {"pdb_id": "2HHB", "chain": "A", "source": "experimental", "label": "Deoxyhemoglobin (T-state), chain A = alpha-globin (HBA2 is near-identical to HBA1)"},
     "G6PD": {"pdb_id": "2BH9", "chain": "A", "source": "experimental", "label": "Human G6PD, NADP+-bound dimer"},
-    "DARC": {"pdb_id": "AF-Q16570-F1", "chain": "A", "source": "alphafold", "label": "Duffy antigen (ACKR1) — AlphaFold predicted model, no experimental structure available"},
+    "DARC": {"pdb_id": "AF-Q16570-F1", "chain": "A", "source": "alphafold", "label": "Duffy antigen (ACKR1) — configured AlphaFold predicted reference model"},
 }
 
 
@@ -188,13 +188,13 @@ class ModelService:
 
         notes = []
         if allele_freq_afr > 0.05:
-            notes.append(f"AFR frequency {allele_freq_afr:.3f} is common in West African populations — usually not severely pathogenic unless protective.")
+            notes.append(f"Supplied AFR frequency {allele_freq_afr:.3f} is common in the annotated population group. Frequency alone does not determine pathogenicity.")
         elif allele_freq_afr < 0.001:
-            notes.append(f"AFR frequency {allele_freq_afr:.4f} is very rare — rare variants are more likely deleterious.")
+            notes.append(f"Supplied AFR frequency {allele_freq_afr:.4f} is very rare. Interpret it with the other annotations and their source coverage.")
         if cadd_score >= CADD_DELETERIOUS_THRESHOLD:
-            notes.append(f"CADD score {cadd_score:.1f} exceeds the deleterious threshold (20).")
+            notes.append(f"CADD score {cadd_score:.1f} meets the configured score threshold (20).")
         else:
-            notes.append(f"CADD score {cadd_score:.1f} is below the deleterious threshold (20).")
+            notes.append(f"CADD score {cadd_score:.1f} is below the configured score threshold (20).")
         if is_hbb:
             notes.append("HBB gene variant — associated with sickle-cell disease / beta-thalassemia. Interpret in full clinical context.")
 

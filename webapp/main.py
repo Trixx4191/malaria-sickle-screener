@@ -1,9 +1,12 @@
 """
 main.py — FastAPI backend for the West Africa Variant Screener web UI.
 
-Run:
-    uvicorn webapp.main:app --reload --port 8000
+Run from the repository root after installing requirements-runtime.txt:
+    python -m uvicorn webapp.main:app --reload --port 8000
     open http://localhost:8000
+
+A missing model starts a labeled synthetic demo unless REQUIRE_REAL_MODEL=true.
+See README.md and docs/API.md for model states and endpoint contracts.
 """
 
 import json

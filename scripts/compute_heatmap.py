@@ -2,25 +2,23 @@
 compute_heatmap.py — generate a per-position x per-substitution effect matrix
 for a gene, using ESM2 zero-shot mutation scoring (masked-marginal method).
 
-This is the same family of technique as EVE/popEVE (score every possible
-amino-acid substitution at every position from evolutionary/sequence signal),
-implemented with a pretrained protein language model instead of training a
-per-protein VAE from an MSA search — no jackhmmer/HHblits step required, just
-a forward pass per position.
+Uses a pretrained protein language model with a forward pass per position.
+The outputs are ESM2 sequence scores, not EVE/popEVE outputs or calibrated
+pathogenicity probabilities. They do not enter the web classifier.
 
-Method (masked-marginal, from Meng et al. 2021 / ESM variant-effect papers):
+Implemented masked-marginal method:
   For each position i in the sequence:
     1. Replace residue i with the [MASK] token.
     2. Run the model, read the log-probabilities over the vocabulary at
        position i.
     3. score(i, mutant_aa) = log P(mutant_aa | masked seq) - log P(wt_aa | masked seq)
-  A very negative score = substitution is strongly disfavored by the model
-  (evolutionarily/structurally implausible) -> more likely deleterious.
-  A score near 0 = tolerated, similar to WT.
+  A negative score means the substitution is less favored than WT by this
+  checkpoint in the masked sequence context. It is not a clinical label.
 
 This does NOT require internet access at query time — it's a one-time,
 per-gene precompute. Run it once per gene; the FastAPI backend just serves
-the cached JSON from data/heatmaps/<GENE>.json.
+the cached JSON from data/heatmaps/<GENE>.json. Sequence positions are not
+automatically mapped to structure residue numbers. See docs/HEATMAPS.md.
 
 Usage:
     pip install -r scripts/requirements-heatmap.txt
@@ -45,7 +43,7 @@ import requests
 OUTPUT_DIR = Path(__file__).resolve().parent.parent / "data" / "heatmaps"
 
 # UniProt accessions for the genes this tool covers. Kept in sync with
-# webapp/main.py::GENE_REGISTRY — if you add a gene there, add it here too.
+# src/utils/config.py::TARGET_GENES and model_service.py::STRUCTURE_REGISTRY.
 GENE_UNIPROT = {
     "HBB": "P68871",
     "HBA1": "P69905",
@@ -154,8 +152,8 @@ def main():
     parser.add_argument(
         "--model",
         default="facebook/esm2_t12_35M_UR50D",
-        help="HuggingFace ESM2 checkpoint. Small/fast default; use "
-             "facebook/esm2_t30_150M_UR50D or larger for better accuracy if you have the compute.",
+        help="Hugging Face ESM2 checkpoint. Default: facebook/esm2_t12_35M_UR50D; "
+             "larger checkpoints require more memory and compute.",
     )
     parser.add_argument("--device", default="cpu", help="'cpu' or 'cuda'")
     args = parser.parse_args()
