@@ -79,10 +79,10 @@ RF_PARAMS = {
     "class_weight": "balanced",   # backup for imbalance (SMOTE is primary)
 }
 
-# CADD score threshold — variants above this are considered likely deleterious
+# Configured CADD threshold for heuristic notes; not a clinical classification.
 CADD_DELETERIOUS_THRESHOLD = 20.0
 
-# AFR allele frequency threshold for "West African validation subset"
+# Threshold for an exploratory held-out AFR-frequency subset, not a cohort.
 AFR_FREQ_THRESHOLD = 0.01   # variants with AFR freq > 1% in validation set
 
 # ─── Output filenames ─────────────────────────────────────────────────────────

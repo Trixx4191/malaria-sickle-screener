@@ -521,7 +521,7 @@ function downloadStructure() {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-/* ── Substitution matrix panel (03) ───────────────────────────── */
+/* ── Amino acid substitutions panel (04) ──────────────────────── */
 
 async function loadHeatmap(gene) {
   const panel = $("panel-matrix");

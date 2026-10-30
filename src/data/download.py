@@ -1,5 +1,8 @@
 """
-download.py — automated download of all public datasets.
+download.py — download ClinVar and the 1000 Genomes sample panel.
+
+CADD and gnomAD helper functions are used during feature construction;
+--dataset all downloads the two source files only. No Pf7 step is required.
 
 Usage:
     python src/data/download.py --dataset all
@@ -59,7 +62,8 @@ def _gunzip(src: Path, dest: Path) -> Path:
 def download_clinvar() -> Path:
     """
     Download ClinVar variant_summary.txt from NCBI FTP.
-    No API key required, but an NCBI key doubles your rate limit.
+    No API key is required for this static public file. The optional key is
+    appended by the current client; E-utilities rate limits do not apply here.
     """
     print("\n[1/4] Downloading ClinVar variant summary…")
     url = CLINVAR_URL
@@ -98,7 +102,7 @@ def fetch_cadd_scores(variants: list[dict]) -> dict:
     Each variant: {'chr': '11', 'pos': 5246696, 'ref': 'A', 'alt': 'T'}
     Returns: {variant_key: cadd_score}
 
-    Rate limit: 1 request/second. Results cached locally.
+    The client pauses one second after successful lookups and caches results.
     No API key required.
     """
     print(f"\n[3/4] Fetching CADD scores for {len(variants)} variants…")
@@ -268,7 +272,8 @@ def main():
         "--dataset",
         choices=["all", "clinvar", "1kg", "cadd", "gnomad"],
         default="all",
-        help="Which dataset to download"
+        help="all/clinvar/1kg download source files; cadd/gnomad do not fetch "
+             "here (use src/data/build_features.py)"
     )
     args = parser.parse_args()
 
@@ -288,9 +293,9 @@ def main():
         print("\nNote: CADD and gnomAD are queried per-variant during feature building.")
         print("      Run: python src/data/build_features.py to trigger those API calls.")
 
-    print("\nManual step required:")
-    print("  MalariaGEN Pf7 — register at https://malariagen.net/data/pf7")
-    print("  After approval, download pf7_samples.txt to data/raw/")
+    print("\nCADD and gnomAD features: python src/data/build_features.py")
+    print("MalariaGEN Pf7 is not used by this human-variant pipeline; no manual Pf7 step is required.")
+    print("Source paths, caches, and limitations: docs/DATA.md")
     print("\nAll done.")
 
 

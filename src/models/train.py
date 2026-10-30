@@ -2,7 +2,10 @@
 train.py — full model training pipeline.
 
 Trains a Logistic Regression baseline and a Random Forest with SMOTE.
-Saves the best model to outputs/models/variant_screener_v1.pkl
+Saves the Random Forest whenever it is trained, or the logistic model for
+--model logistic, to outputs/models/variant_screener_v1.pkl. The printed
+highest test AUC does not select the saved artifact when both are trained.
+SMOTE is fitted within training CV folds; the test split remains held out.
 
 Usage:
     python src/models/train.py

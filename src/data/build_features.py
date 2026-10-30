@@ -3,11 +3,14 @@ build_features.py — assemble the final feature matrix from all data sources.
 
 Columns in the output feature matrix:
     variant_id, gene, allele_freq_afr, cadd_score, gene_region,
-    conservation_phylop (placeholder), is_hbb, review_stars, label
+    conservation_phylop (CADD-derived proxy), is_hbb, review_stars, label
 
 Run after:
     python src/data/download.py --dataset clinvar
-    python src/data/download.py --dataset 1kg
+
+The 1000 Genomes panel is optional reference material, not a feature input.
+Real remote lookups are the default; an offline placeholder check requires
+FEATURE_BUILD_USE_REMOTE=0 together with --allow-fake. See docs/DATA.md.
 
 Usage:
     python src/data/build_features.py
@@ -185,9 +188,9 @@ def build(allow_fake: bool = False) -> pd.DataFrame:
     df["variant_id_gnomad"] = build_variant_ids(df)
 
     # Real data (gnomAD + CADD API calls) is the default. Set
-    # FEATURE_BUILD_USE_REMOTE=0 explicitly (or pass --allow-fake) if you
-    # deliberately want a zero-filled matrix for a quick pipeline smoke test —
-    # this is NEVER something you want for an actual trained model.
+    # FEATURE_BUILD_USE_REMOTE=0 AND pass --allow-fake for a deliberately
+    # zero-filled offline pipeline check. Such features are synthetic and
+    # cannot support reported real-data research results.
     use_remote = os.getenv("FEATURE_BUILD_USE_REMOTE", "1").lower() in {"1", "true", "yes", "on"}
 
     # No silent cap: fetch every variant unless the caller explicitly sets one.
@@ -235,14 +238,14 @@ def build(allow_fake: bool = False) -> pd.DataFrame:
         data_provenance = "synthetic_placeholder"
 
     # 5. Derived features
-    # Placeholder conservation score — replace with real phyloP from UCSC when available
-    # For now: use CADD as a proxy (highly correlated with conservation)
+    # CADD-derived proxy, not measured phyloP. Changing the feature definition
+    # requires explicit provenance, retraining and evaluation.
     df["conservation_phylop"] = (df["cadd_score"] / 40.0).clip(-3, 3)
 
     # 6. Select and order final feature columns
     features = df[[
         "variant_id", "gene",
-        "allele_freq_afr",    # PRIMARY West Africa signal
+        "allele_freq_afr",    # gnomAD genome AFR group; not a West African cohort
         "cadd_score",         # deleteriousness
         "gene_region",        # exonic=2, UTR=1, intronic=0
         "conservation_phylop",# conservation (CADD-derived proxy)
@@ -252,7 +255,8 @@ def build(allow_fake: bool = False) -> pd.DataFrame:
     ]].copy()
 
     # 7. Drop rows with missing critical values (includes unresolved gnomAD/
-    # CADD lookups — see note above, these are NaN, never fake zeros)
+    # CADD lookups represented as NaN. gnomAD HTTP-success responses without
+    # usable population data can still become zero; see docs/DATA.md.
     n_before = len(features)
     n_missing_af = features["allele_freq_afr"].isna().sum()
     n_missing_cadd = features["cadd_score"].isna().sum()
