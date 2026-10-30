@@ -3,7 +3,10 @@ parse_clinvar.py — parse the ClinVar variant_summary.txt file,
 filter for target genes, and produce a clean labelled DataFrame.
 
 Output columns:
-    variant_id, gene, chr, pos, ref, alt, significance, label, gene_region, review_stars
+    variant_id, gene, chr, pos, ref, alt, significance, label, gene_region,
+    review_stars, is_hbb
+
+See docs/DATA.md for exact gene/label filtering and region-inference limits.
 """
 
 import sys
@@ -88,7 +91,7 @@ def filter_target_genes(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def filter_grch38(df: pd.DataFrame) -> pd.DataFrame:
-    """Keep only GRCh38 entries (most recent assembly)."""
+    """Keep entries in the GRCh38 assembly used by this pipeline."""
     df = df.copy()
     df["Assembly"] = df["Assembly"].fillna("").astype(str).str.strip()
     filtered = df[df["Assembly"] == "GRCh38"].copy()
