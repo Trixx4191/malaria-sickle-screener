@@ -19,7 +19,8 @@ python scripts/compute_heatmap.py --all
 `--all` processes HBB, HBA1, HBA2, G6PD and DARC. Use `DARC` for ACKR1.
 Each run fetches the canonical sequence from `rest.uniprot.org`; model weights
 are downloaded from Hugging Face and can then use its local cache. The default
-checkpoint is `facebook/esm2_t12_35M_UR50D` and the default device is `cpu`.
+checkpoint is [facebook/esm2_t12_35M_UR50D](https://huggingface.co/facebook/esm2_t12_35M_UR50D)
+and the default device is `cpu`.
 
 ```bash
 python scripts/compute_heatmap.py --gene G6PD --model facebook/esm2_t30_150M_UR50D --device cuda
@@ -49,8 +50,8 @@ masks the wild-type residue and computes
 `log P(mutant | masked sequence) - log P(wild type | masked sequence)`.
 Scores are rounded to four decimals. For a standard amino-acid residue,
 the wild-type score is zero; negative values mean the substitution is less
-favored by the checkpoint in that sequence context. These ESM2 outputs are
-not probabilities, clinical pathogenicity labels or popEVE predictions.
+favored by the checkpoint in that sequence context. These sequence-model
+scores are separate from probabilities and clinical pathogenicity labels.
 
 The display colors clamp scores to −10 through 0: stronger negative values
 are darker red; zero and positive scores share the light end. Selecting a

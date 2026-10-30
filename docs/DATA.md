@@ -10,9 +10,9 @@ for serving model artifacts.
 
 | Source | Current role | Local file or cache |
 | --- | --- | --- |
-| ClinVar variant summary | GRCh38 variant coordinates, binary training labels, name-derived region, review status | `data/raw/variant_summary.txt`, `data/processed/clinvar_clean.csv` |
-| gnomAD `gnomad_r4`, genome `afr` population | `allele_freq_afr` feature | `data/external/gnomad_cache.json` |
-| CADD `GRCh38-v1.7` | `cadd_score` feature and conservation proxy | `data/external/cadd_cache.json` |
+| [ClinVar](https://www.ncbi.nlm.nih.gov/clinvar/) variant summary | GRCh38 variant coordinates, binary training labels, name-derived region, review status | `data/raw/variant_summary.txt`, `data/processed/clinvar_clean.csv` |
+| [gnomAD](https://gnomad.broadinstitute.org/) `gnomad_r4`, genome `afr` population | `allele_freq_afr` feature | `data/external/gnomad_cache.json` |
+| [CADD](https://cadd.bihealth.org/) `GRCh38-v1.7` | `cadd_score` feature and conservation proxy | `data/external/cadd_cache.json` |
 | 1000 Genomes sample panel | Downloadable population reference; not read by the current feature builder | `data/raw/1kg_panel.tsv` |
 | Ensembl, PDB, AlphaFold, UniProt, ESM2 | Gene/structure context and optional substitution matrices; not classifier inputs | See [gene references](GENE_REFERENCE.md) and [heatmaps](HEATMAPS.md) |
 

@@ -60,8 +60,9 @@ the unrounded model score:
 
 A displayed percentage may round to a tier boundary. No probability
 calibration step is implemented, and the tiers are application categories
-rather than clinical classifications. Notes follow fixed rules about frequency, CADD and the HBB
-flag. Expand **Feature weights** for normalized heuristic weights, separate
+rather than clinical classifications. Notes follow fixed rules about
+frequency, CADD and the HBB flag. Expand **Feature weights** for normalized
+heuristic weights, separate
 from per-variant SHAP explanations.
 
 The serving model distinguishes gene identity only through an HBB flag.

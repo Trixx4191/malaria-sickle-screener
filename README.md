@@ -62,8 +62,9 @@ Gene identity otherwise does not distinguish the four non-HBB options.
 
 The interface displays class-1 model output as a percentage and uses fixed
 tiers: below 40%, 40% to below 75%, and 75% or above. No probability
-calibration step or calibration evaluation is recorded. Feature weights are heuristic; offline SHAP plotting is a
-separate script. See [data construction](docs/DATA.md) and
+calibration step or calibration evaluation is recorded. Feature weights are
+heuristic; offline SHAP plotting is a separate script. See
+[data construction](docs/DATA.md) and
 [evaluation limits](docs/EVALUATION.md#limitations).
 
 ## Run locally
