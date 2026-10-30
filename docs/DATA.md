@@ -1,13 +1,12 @@
 # Data sources and training pipeline
 
-Repository behavior reviewed on 30 October 2026. Run commands from the
-repository root with the research dependencies in `requirements.txt`
-installed. Serving an existing model only needs `requirements-runtime.txt`;
-it does not require downloads, credentials, or retraining. See the
-[README](../README.md) for installation and [deployment guide](DEPLOYMENT.md)
-for serving trusted artifacts.
+Run these commands from the repository root with `requirements.txt`
+installed. Serving an existing model requires only `requirements-runtime.txt`;
+data downloads and retraining are separate workflows. See the
+[README](../README.md) for installation and [DEPLOYMENT.md](DEPLOYMENT.md)
+for serving model artifacts.
 
-## What the pipeline actually uses
+## Sources
 
 | Source | Current role | Local file or cache |
 | --- | --- | --- |
@@ -17,10 +16,9 @@ for serving trusted artifacts.
 | 1000 Genomes sample panel | Downloadable population reference; not read by the current feature builder | `data/raw/1kg_panel.tsv` |
 | Ensembl, PDB, AlphaFold, UniProt, ESM2 | Gene/structure context and optional substitution matrices; not classifier inputs | See [gene references](GENE_REFERENCE.md) and [heatmaps](HEATMAPS.md) |
 
-MalariaGEN Pf7 and UCSC phyloP are **not inputs to the current pipeline**.
-There is no patient-data import or clinic-results ingestion step. Raw data,
-processed matrices, caches, model artifacts, and heatmaps are gitignored;
-a clean clone does not contain them.
+MalariaGEN Pf7 and UCSC phyloP are not pipeline inputs. Raw data, matrices,
+caches, model artifacts and heatmaps are gitignored and absent from a clean
+clone.
 
 ## Download and parse ClinVar
 
@@ -32,10 +30,7 @@ python src/data/parse_clinvar.py
 The downloader retrieves the [NCBI variant summary](https://ftp.ncbi.nlm.nih.gov/pub/clinvar/tab_delimited/variant_summary.txt.gz),
 decompresses it into `data/raw/variant_summary.txt`, and removes the downloaded
 `.gz`. If the decompressed file exists, it skips downloading. A manual download
-must be saved and decompressed to that same path. No API key is required for
-this public file. The code can append `NCBI_API_KEY` if configured, but this
-is a static download, not an E-utilities request; E-utilities rate-limit
-claims do not describe this download.
+must be decompressed to that same path. This public file requires no API key.
 
 The parser:
 
@@ -51,18 +46,16 @@ The parser:
 - Maps recognized ClinVar review statuses to `review_stars` from 0 to 4,
   with unrecognized/missing statuses assigned 0, and derives `is_hbb`.
 
-The API uses `DARC` for the gene displayed as ACKR1. The parser does not
-translate `ACKR1` to `DARC`, so a source row named `ACKR1` fails its exact
-gene filter. The recorded training matrix has no DARC/ACKR1 variants; the
-UI's gene list does not establish training coverage.
+The API uses `DARC` for ACKR1. The parser does not translate the alias, so
+source rows named `ACKR1` fail its exact gene filter. Training coverage is
+reported in [EVALUATION.md](EVALUATION.md).
 
-`build_features.py` reuses `clinvar_clean.csv` if present. After intentionally
-updating the raw source, rerun the parser before building features. Archive
-the existing source, processed data, caches, and model first if you need to
-retain the previous experiment. Source URLs are mutable; downloading again
-does not recreate the historical dataset automatically.
+`build_features.py` reuses `clinvar_clean.csv` if present. After updating the
+raw source, rerun the parser before building features. Preserve the previous
+source files, processed data, caches and model to retain an experiment;
+mutable download URLs cannot recreate a historical dataset by themselves.
 
-## Build real features
+## Build features
 
 ```bash
 python src/data/build_features.py
@@ -75,9 +68,9 @@ writes `data/processed/features.csv` plus `features_provenance.json`.
 The gnomAD query posts to `https://gnomad.broadinstitute.org/api` using
 `variantId` in `chr-pos-ref-alt` format, dataset `gnomad_r4`, and
 `genome { populations { id ac an } }`. It takes `ac / an` from the `afr`
-population, rounded to six decimal places. It does not query exome frequencies
-or select individual West African populations. The reference gene spans in
-the UI are not variant coordinates and cannot be used as lookup positions.
+population, rounded to six decimal places. It queries neither exome frequencies
+nor individual West African populations. Lookup coordinates must describe
+the variant, rather than the gene span shown in the UI.
 
 CADD requests use this form, including the assembly/version segment:
 
@@ -85,32 +78,28 @@ CADD requests use this form, including the assembly/version segment:
 https://cadd.gs.washington.edu/api/v1.0/GRCh38-v1.7/<chr>:<pos>_<ref>_<alt>
 ```
 
-The code reads the returned `PHRED` score. The [official CADD API documentation](https://cadd.bihealth.org/api)
-describes the versioned path and notes that an unavailable reference/alternate
-combination can return an empty list. The current client treats empty results
-or 404s as no available score. It retries rate limits and transport errors;
-both source clients stop their loops after repeated failures. Cached successful
-lookups reduce work on the next run. CADD null entries are retried; new failed
-gnomAD requests are not added to its cache.
+The client reads `PHRED` and treats an empty result or 404 as no available
+score; see the [CADD API documentation](https://cadd.bihealth.org/api).
+Both source clients retry rate limits and transport failures, stop after
+repeated failures, and cache successful lookups. CADD null entries are
+retried; new failed gnomAD requests are not cached.
 
 Rows with unresolved CADD scores, unresolved gnomAD requests represented as
 `None`, or missing labels are dropped. A drop rate above 30% produces a
 warning; it does not abort saving the matrix. Inspect the counts and saved
 provenance before training.
 
-There is an important gnomAD limitation: an HTTP-success response with no
-variant, no genome data, no `afr` entry, or an allele denominator of zero is
-currently converted to `0.0`. GraphQL errors returned inside an HTTP 200
-response are not explicitly rejected. Consequently, a stored zero is not
-proof of an observed zero allele frequency, and `data_provenance=real` is not
-a guarantee that every input has complete source coverage. Existing caches
-should be audited when investigating those cases.
+The gnomAD fetcher converts a successful response with no variant, genome
+data, `afr` entry or positive allele denominator to `0.0`. It does not
+explicitly reject GraphQL errors inside HTTP 200 responses. A stored zero
+therefore need not represent an observed zero frequency. The `real`
+provenance label records the remote-fetch branch, not complete source
+coverage; review cached values and source coverage when investigating them.
 
-Both cache formats use `chr-pos-ref-alt` keys without including the source
-release or assembly. Preserve them for reproducibility, but do not reuse
-them blindly after changing assembly, CADD version, or gnomAD dataset. The
-gnomAD dataset identifier is currently hardcoded in the fetcher; changing
-`GNOMAD_API` alone does not change it.
+Both caches use `chr-pos-ref-alt` keys without a source release or assembly.
+Use a new cache after changing assembly, CADD version or gnomAD dataset.
+The gnomAD dataset identifier is hardcoded in the fetcher; changing
+`GNOMAD_API` alone changes only the endpoint.
 
 ### Feature columns
 
@@ -126,12 +115,10 @@ features in order, and the target `label`:
 | `is_hbb` | `1` for HBB, otherwise `0` | Derived from the selected gene |
 | `review_stars` | ClinVar review-status mapping | Fixed to `1`; not a user input |
 
-Despite its column name, `conservation_phylop` does not contain measured
-phyloP scores. It duplicates information derived from CADD. Supplying
-independent conservation values changes the input relationship relative to
-training. Apart from `is_hbb`, the model receives no gene identity feature;
-changing between the other four genes with otherwise identical inputs
-produces the same classifier input.
+`conservation_phylop` contains a CADD-derived proxy, not measured phyloP.
+Independent conservation values change that training relationship. Apart
+from `is_hbb`, the model has no gene identity feature: identical annotations
+for any of the other four genes produce identical classifier inputs.
 
 ### Feature-build settings
 
@@ -143,8 +130,7 @@ produces the same classifier input.
 | `CADD_API_BASE` | `https://cadd.gs.washington.edu/api/v1.0/` | Overrides the base URL; retain its trailing slash |
 | `CADD_VERSION` | `GRCh38-v1.7` | Selects the CADD build/version segment |
 
-For a deliberately synthetic offline pipeline check, both the environment
-setting and CLI flag are required:
+An offline synthetic check requires both the environment setting and flag:
 
 ```bash
 FEATURE_BUILD_USE_REMOTE=0 python src/data/build_features.py --allow-fake
@@ -164,13 +150,11 @@ python src/models/train.py --model all
 python src/models/evaluate.py
 ```
 
-Training uses a stratified 80/20 split with seed 42. The Random Forest's
-five-fold cross-validation runs on training rows, with SMOTE fitted inside
-each fold. The final forest is fitted on the training split through the
-same SMOTE pipeline; only the fitted classifier is saved for serving. The
-logistic baseline uses a scaler fitted on training rows. `--model all`
-compares both models, but saves the Random Forest when it is included,
-even if the console's highest-AUC model were different.
+Training compares a scaled logistic baseline and a Random Forest with
+fold-local SMOTE; see [EVALUATION.md](EVALUATION.md) for split design and
+recorded results. `--model all` saves the forest whenever it is included,
+even if the console reports a different model with the highest AUC. The
+saved forest does not require the training-only sampler at inference.
 
 `evaluate.py` produces offline SHAP and feature-importance figures for the
 forest. It explains up to the first 500 matrix rows with a sampled background
@@ -202,12 +186,8 @@ the feature stage. Individual `--skip-features`, `--skip-train`, and
 `--skip-evaluate` flags reuse existing outputs, so check their provenance
 before relying on them.
 
-The recorded real-feature dataset has 1,805 variants, with 1,444 training and
-361 held-out test rows. The held-out AFR-frequency subset contains only six
-variants, all benign; its AUC is undefined. An AFR-frequency threshold is
-not an independent West African clinical validation cohort. See the
-[README](../README.md) for the persisted evaluation values and [usage
-guide](USAGE.md) for interpreting app output.
+See [EVALUATION.md](EVALUATION.md) for the evidence supporting the reported
+metrics and [USAGE.md](USAGE.md) for interpreting app output.
 
 ## Other sources and optional assets
 
@@ -221,16 +201,11 @@ The configured West African panel codes are YRI, ESN, MSL, and GWD; LWK is
 listed separately in the broader AFR group. These panel lists do not filter
 the gnomAD feature query.
 
-MalariaGEN [Pf7 is a *Plasmodium falciparum* parasite dataset](https://www.malariagen.net/resource/34/),
-with its own [data-access guide](https://malariagen.github.io/parasite-data/pf7/Data_access.html).
-It is not a human HBB/GRCh38 dataset: a parasite chromosome 11 file cannot
-supply human HBB variants. No registration or Pf7 file is required to run
-this project's classifier. The earlier instructions to obtain a human HBB
-subset from Pf7 were incorrect.
+MalariaGEN [Pf7 contains *Plasmodium falciparum* parasite genomes](https://www.malariagen.net/resource/34/),
+not human HBB variants. Its [access guide](https://malariagen.github.io/parasite-data/pf7/Data_access.html)
+describes a separate resource; no Pf7 file or registration is required here.
 
-Real UCSC conservation values would require an explicit feature-pipeline
-change, new provenance, retraining, and evaluation; placing a file in
-`data/external/` does not enable them. Optional ESM2 matrices are generated
-separately and never enter the Random Forest; see [HEATMAPS.md](HEATMAPS.md).
-Source data and external models retain their providers' terms and citation
-requirements.
+Using UCSC conservation values would require feature-pipeline changes,
+new provenance, retraining and evaluation. Optional ESM2 matrices are
+generated separately; see [HEATMAPS.md](HEATMAPS.md). External data and
+models retain their providers' terms and citation requirements.

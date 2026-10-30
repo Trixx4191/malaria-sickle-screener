@@ -1,14 +1,13 @@
 # API reference
 
-Reviewed against `webapp/main.py` and `webapp/model_service.py` on 30 October
-2026. All paths below are relative to the running app; local examples use
-`http://127.0.0.1:8000`. The Docker default is port 7860.
-FastAPI supplies `/docs`, `/redoc` and `/openapi.json`.
+The FastAPI service accepts manually supplied annotations and returns a
+classifier score. Paths are relative to the running app; examples use
+`http://127.0.0.1:8000`. Docker uses port 7860 by default. Interactive schemas
+are available at `/docs`, `/redoc` and `/openapi.json`.
 
-These endpoints support the research interface. No authentication, prediction
-history, variant lookup, upload, report export or feedback endpoint is
-implemented. Prediction request bodies are not explicitly persisted by the
-application; deployment/access logging is controlled separately by operators.
+The service has no authentication or endpoints for variant lookup, upload,
+prediction history, report export or feedback. It does not explicitly persist
+prediction bodies; deployment logging is controlled separately by operators.
 
 ## Routes
 
@@ -34,9 +33,9 @@ A strict real-data deployment returns this health object:
 {"status":"ok","demo_mode":false,"data_provenance":"real"}
 ```
 
-Health is HTTP 200 whenever the endpoint is running, including synthetic or
-unverified modes. It does not make a test prediction or check external services.
-Check the flags as well as HTTP status. `/api/model-info` returns:
+Health returns HTTP 200 in synthetic and unverified modes too. It checks
+neither prediction execution nor external services; inspect both flags.
+`/api/model-info` returns:
 
 | Field | Meaning |
 | --- | --- |
@@ -46,8 +45,8 @@ Check the flags as well as HTTP status. `/api/model-info` returns:
 | `feature_order` | Ordered feature names actually used by this bundle |
 | `genes` | `HBB`, `G6PD`, `DARC`, `HBA1`, `HBA2` |
 
-A saved synthetic artifact can have `demo_mode: false`; provenance must also
-be checked. Provenance comes from the bundle, not the metadata sidecar.
+A saved synthetic artifact can have `demo_mode: false`. Provenance comes
+from the bundle, independently of the metadata sidecar.
 `REQUIRE_REAL_MODEL=true` prevents startup without a compatible bundle marked
 `real`. With strict mode off, only a missing artifact triggers the demo;
 an invalid or scikit-learn-incompatible artifact causes startup failure.
@@ -83,7 +82,7 @@ curl --fail-with-body http://127.0.0.1:8000/api/predict \
   --data '{"gene_name":"HBB","gene_region":"exonic","allele_freq_afr":0.01,"cadd_score":25,"conservation_phylop":1}'
 ```
 
-The exact numerical score depends on the loaded artifact. Response fields:
+Scores depend on the loaded artifact. Response fields:
 
 | Field | Type / meaning |
 | --- | --- |
@@ -97,8 +96,8 @@ The exact numerical score depends on the loaded artifact. Response fields:
 
 For a forest, contribution magnitudes come from global feature importances;
 their signs use fixed feature midpoints. Models without `feature_importances_`
-use equal magnitudes. Weights are normalized to a maximum absolute magnitude
-of 1 when any importance is nonzero. They are not per-variant SHAP values.
+use equal magnitudes. Weights are normalized to the range −1 to 1 and are
+not per-variant SHAP values.
 A saved scaler, if present, is applied before `predict_proba`.
 
 These tiers are application display thresholds, not clinical classifications.
@@ -143,10 +142,10 @@ For a running real-data instance:
 python scripts/smoke_deployment.py --base-url http://127.0.0.1:8000
 ```
 
-The script checks real provenance, all five genes, input normalization, valid
+The script checks provenance, all five genes, input normalization, valid
 prediction ranges, invalid requests, static files, structure metadata and
 optional heatmap availability. It sends 136 valid prediction requests and
 19 invalid requests sequentially; it is not a clinical evaluation or a
 concurrent load test. It uses the Python standard library and intentionally
-fails for a demo or unverified-data model. External viewer file downloads
-and browser/WebGL behavior require separate manual checking.
+fails for a demo or unverified-data model. External viewer downloads and
+browser/WebGL behavior require a manual check.

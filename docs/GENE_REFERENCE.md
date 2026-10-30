@@ -1,16 +1,13 @@
 # Gene and protein reference data
 
-Documentation checked against the application on 30 October 2026. The locus
-strip's static reference set records Ensembl release 116 and the GRCh38
-human reference assembly, originally verified on 25 October 2026. This
-documentation update preserves that reference set; it does not refresh
-gene annotations from live external records.
+The locus strip uses a static Ensembl release 116 reference set for the
+GRCh38 human assembly, recorded on 25 October 2026.
 
 Coordinates are 1-based and inclusive. They describe complete annotated
 gene spans, not a submitted variant, transcript, coding sequence, or exon
 structure. The chromosome track locates the selected gene across the full
-chromosome; its marker is enlarged to remain visible. These reference
-fields do not enter the pathogenicity model.
+chromosome; its marker is enlarged for visibility. These fields provide
+context and do not enter the classifier.
 
 | App/API key | Displayed symbol | Chromosome | Start | End | Strand | Cytoband |
 | --- | --- | --- | ---: | ---: | --- | --- |
@@ -62,11 +59,9 @@ The following records are configured in
 | G6PD | `2BH9` | A | Experimental PDB | `P11413` |
 | DARC | `AF-Q16570-F1` | A | AlphaFold prediction | `Q16570` |
 
-These are the application's selected reference structures, not models of
-the entered mutation or guarantees of experimental coverage for every
-residue. Choosing AlphaFold for DARC does not establish that no experimental
-ACKR1 structure exists. HBA1 and HBA2 share the configured structure and
-heatmap accession.
+The viewer displays reference structures, not simulated mutants. Coverage
+depends on the selected record. DARC uses the configured AlphaFold model;
+HBA1 and HBA2 share a structure and heatmap accession.
 
 `GET /api/structure/{gene}` returns the registry record; the browser then
 loads the coordinate file from RCSB, or discovers the current AlphaFold
@@ -95,8 +90,5 @@ and are served from `data/heatmaps/<APP_KEY>.json`. Their scores are separate
 from the classifier and do not establish clinical pathogenicity. Generation,
 cache schema, and interpretation are documented in [HEATMAPS.md](HEATMAPS.md).
 
-The five available reference records should not be read as five separately
-validated gene models. The recorded training set contains HBB, G6PD, HBA1,
-and HBA2 variants, with no DARC/ACKR1 rows. Apart from the HBB flag, selected
-gene identity is not a model feature. See [DATA.md](DATA.md) for the actual
-feature construction and training coverage.
+Training coverage and evaluation limits are documented in
+[EVALUATION.md](EVALUATION.md); feature construction is in [DATA.md](DATA.md).

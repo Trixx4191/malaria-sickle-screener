@@ -1,22 +1,21 @@
 # Using the screener
 
-Reviewed against the current interface on 30 October 2026. This guide describes
-the research prototype served by `webapp/main.py`. For installation and model
-loading, start with the [README](../README.md#run-locally).
+This guide covers the FastAPI interface reviewed on 30 October 2026. Start
+with the [README](../README.md#run-locally) for installation and model loading.
+Research results and their scope are documented in [EVALUATION.md](EVALUATION.md).
 
 ## Before scoring
 
-The application accepts manually supplied annotations. It does not accept a
-VCF, identify a variant from a residue, retrieve annotations for a patient, or
-store a case history. Use annotations for the same variant and genome build;
-the current research pipeline uses GRCh38. The API cannot check their source
-or that the numerical values describe a particular variant.
+Prepare annotations for the same variant and genome build; the research
+pipeline uses GRCh38. The application scores the supplied values without
+retrieving or verifying a variant record. Residue selection is a separate
+viewer control. VCF upload and case history are not supported.
 
 Read the status in the top right:
 
 | Status | Meaning |
 | --- | --- |
-| `real data · Random Forest` (or Logistic Regression) | A saved bundle reports real feature provenance; this does not imply clinical validation |
+| `real data · Random Forest` (or Logistic Regression) | A saved bundle reports real feature provenance |
 | `Demo mode · synthetic data` | A temporary model was fitted to synthetic examples because no artifact was supplied |
 | `Warning · unverified training data` | A loaded artifact has placeholder or unknown feature provenance |
 | `Model unavailable` | The browser could not retrieve model information; check connectivity and reload |
@@ -32,9 +31,8 @@ more detail, or inspect `/api/model-info` using the [API guide](API.md).
 2. Select **Gene region**: Exonic, UTR or Intronic / other.
 3. Set **AFR allele frequency**, **CADD Phred score** and **Conservation**.
    Frequency is a fraction: `0.01` means 1%. Conservation is a CADD-derived
-   proxy in the recorded training data; measured phyloP is not interchangeable
-   without evaluating a changed feature definition. The proxy formula is
-   documented in [DATA.md](DATA.md).
+   proxy in training: `clip(CADD / 40, -3, 3)`. Independently measured phyloP
+   changes that feature definition; see [DATA.md](DATA.md).
 4. Select **Score variant** and read the **Model score** panel. Changing any
    model input clears the old score and displays “Inputs changed. Score again.”
 
@@ -60,22 +58,16 @@ the unrounded model score:
 | 40% to below 75% | UNCERTAIN / BORDERLINE |
 | 75% and above | LIKELY PATHOGENIC |
 
-A displayed percentage may round to a tier boundary; the tier is based on the
-unrounded value. These labels are application categories. The implementation
-does not calibrate the percentage or apply clinical classification guidelines.
-Notes are fixed rules about frequency, CADD and the HBB flag. They are not an
-independent expert assessment. Expand **Feature weights** for normalized,
-heuristic relative weights; these are not SHAP values or causal explanations.
+A displayed percentage may round to a tier boundary. No probability
+calibration step is implemented, and the tiers are application categories
+rather than clinical classifications. Notes follow fixed rules about frequency, CADD and the HBB
+flag. Expand **Feature weights** for normalized heuristic weights, separate
+from per-variant SHAP explanations.
 
 The serving model distinguishes gene identity only through an HBB flag.
 With otherwise identical inputs, G6PD, DARC, HBA1 and HBA2 produce the same
-score. `review_stars` is fixed to 1. The recorded matrix has no DARC training
-rows. AFR refers to the queried gnomAD population group, not a clinic-specific
-or independently validated West African cohort. See the full
-[data and evaluation limitations](DATA.md).
-
-The footer states **Research use only** and **Not validated for clinical
-use**. Clinic use or user feedback alone does not change that status.
+score. `review_stars` is fixed to 1. See [evaluation limitations](EVALUATION.md#limitations)
+for training coverage and the scope of the recorded results.
 
 ## Explore the protein
 
@@ -117,26 +109,25 @@ See [HEATMAPS.md](HEATMAPS.md) for generation and interpretation.
 | No substitution panel | A missing or failed map remains hidden; scoring does not require a map |
 | Old interface after an update | Hard-refresh the browser; have the operator confirm the deployed source revision |
 
-## Record feedback from use in clinics
+## Record lab and clinic feedback
 
-No clinic findings are recorded in this documentation update. For the next
-review, share de-identified observations using the following fields. Keep
-usability observations separate from comparisons against independently
-established variant classifications.
+Use these fields when documenting lab or clinic use. Keep usability and
+workflow observations separate from comparisons against independent variant
+classifications. The [evaluation record](EVALUATION.md#lab-and-clinic-reports)
+tracks the evidence supplied for review.
 
 | Field | What to record |
 | --- | --- |
 | Session context | Date/time and timezone, anonymous site label, browser/device, network conditions and user role |
+| Purpose and source | Task performed, type of evaluation, and the dated source document supporting the report |
 | Version | Deployed source revision if available, app URL, `/api/model-info` response and model artifact identifier/hash supplied by the operator |
 | Inputs and action | Exact five annotation values, their sources/build, whether a preset was used, and the steps taken |
 | Output | Returned percentage/tier and provenance, or exact error text; screenshots can be redacted |
-| Independent comparison, if available | Reference classification, its source/date and whether it was independent of the app; include disagreements and uncertain cases |
+| Independent comparison, if available | Reference classification, source/method/date, and independence from the app; include disagreements and uncertain cases |
 | Usability | What the user expected, what happened, delays, confusing controls and whether they completed the task |
 | Counts | Sessions/variants attempted, succeeded and failed, plus how cases were selected; specify repeat attempts |
 
-Do not include patient names, contact information, chart numbers or other
-identifying details in shared feedback. The app has no feedback submission,
-case export or clinical-outcome collection feature; observations must be
-recorded separately. Current API responses do not include the source revision
-or an artifact hash, so obtain those from the operator rather than infer them
-from an AUC value.
+Share de-identified observations and keep identifiable source records outside
+public version control. Feedback collection and case export are not implemented.
+Obtain the source revision and artifact hash from the operator; the API does
+not include them, and an AUC value does not identify a model version.
