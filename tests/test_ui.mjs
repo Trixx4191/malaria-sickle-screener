@@ -33,6 +33,20 @@ function harness(fetch, viewer = null) {
     remove() { this.removed = true; }
   }
   const elements = Object.fromEntries([...html.matchAll(/id="([^"]+)"/g)].map(([, id]) => [id, new Element()]));
+  for (const [, tag] of html.matchAll(/<input\b([^>]*)>/g)) {
+    const attrs = Object.fromEntries([...tag.matchAll(/([\w-]+)="([^"]*)"/g)].map(([, name, value]) => [name, value]));
+    if (attrs.type !== 'range') continue;
+    let value;
+    Object.defineProperty(elements[attrs.id], 'value', {
+      get() { return value; },
+      set(raw) {
+        const min = Number(attrs.min), max = Number(attrs.max), step = Number(attrs.step);
+        const bounded = Math.max(min, Math.min(max, Number(raw)));
+        value = String(Number((min + Math.round((bounded - min) / step) * step).toFixed(10)));
+      },
+    });
+    elements[attrs.id].value = attrs.value;
+  }
   const button = new Element('button');
   const created = [];
   const document = {
@@ -43,7 +57,7 @@ function harness(fetch, viewer = null) {
     createElement: tag => { const el = new Element(tag); created.push(el); return el; },
     addEventListener(name, callback) { this.events[name] = callback; },
   };
-  Object.entries({gene_name:'HBB', gene_region:'exonic', allele_freq_afr:'0.01', cadd_score:'15', conservation_phylop:'0.5'}).forEach(([id,value]) => elements[id].value = value);
+  Object.entries({gene_name:'HBB', gene_region:'exonic', allele_freq_afr:'0.01', cadd_score:'15', conservation_phylop:'0.375'}).forEach(([id,value]) => elements[id].value = value);
   const context = vm.createContext({
     document, fetch, console: { error() {} }, setTimeout, clearTimeout,
     AbortController, URL, Blob, window: viewer ? { $3Dmol: { createViewer: () => viewer } } : {},
@@ -54,6 +68,24 @@ function harness(fetch, viewer = null) {
 const jsonResponse = (value, ok = true) => ({ ok, json: async () => value });
 const flush = async () => { for (let i = 0; i < 5; i++) await new Promise(resolve => setImmediate(resolve)); };
 const prediction = { tier:'pathogenic', color:'high', probability:84.2, notes:['Example interpretation'], contributions:[{feature:'cadd_score',weight:-1}], demo_mode:false, data_provenance:'real' };
+
+test('presets submit the CADD-derived conservation proxy without range-step rounding', async () => {
+  const payloads = [];
+  const h = harness(async (url, options) => {
+    if (url === '/api/predict') {
+      payloads.push(JSON.parse(options.body));
+      return jsonResponse(prediction);
+    }
+    return jsonResponse({}, false);
+  });
+  for (const [, key] of html.matchAll(/data-ex="([^"]+)"/g)) {
+    vm.runInContext(`applyExample(${JSON.stringify(key)})`, h.context);
+    await flush();
+    const payload = payloads.at(-1);
+    assert.equal(payload.conservation_phylop, Math.max(-3, Math.min(3, payload.cadd_score / 40)), key);
+    assert.equal(h.elements['cons-val'].textContent, payload.conservation_phylop.toFixed(3));
+  }
+});
 
 test('failed optional viewer download leaves status and predictions functional', async () => {
   const h = harness(async url => {

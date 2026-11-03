@@ -35,7 +35,7 @@ FEATURE_LABELS = {
     "allele_freq_afr":     "AFR allele frequency",
     "cadd_score":          "CADD score",
     "gene_region":         "Gene region (exonic/UTR/intronic)",
-    "conservation_phylop": "Conservation (phyloP proxy)",
+    "conservation_phylop": "Conservation (CADD-derived proxy)",
     "is_hbb":              "HBB gene flag (sickle-cell)",
     "review_stars":        "ClinVar review quality",
 }

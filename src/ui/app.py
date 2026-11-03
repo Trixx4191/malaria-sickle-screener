@@ -59,7 +59,8 @@ def predict(
     gene_name: str,
 ) -> tuple[str, str, str]:
     """
-    Returns: (risk_label, confidence_str, interpretation)
+    Return (pathogenicity_tier, model_percentage, interpretation_notes).
+    The percentage is an uncalibrated classifier score.
     """
     if not MODEL_LOADED:
         return "Model not loaded", "—", "Run python src/models/train.py first."
@@ -128,7 +129,7 @@ def predict(
 
     interpretation = "\n".join(lines) if lines else "No specific flags."
 
-    return label, f"{prob_pct}% pathogenic probability", interpretation
+    return label, f"{prob_pct}% model score", interpretation
 
 
 #  UI Layout
@@ -256,7 +257,7 @@ with gr.Blocks(css=CSS, title="West Africa Variant Screener") as demo:
                 label="Gene region"
             )
             conservation = gr.Slider(
-                minimum=-3.0, maximum=3.0, value=0.5, step=0.1,
+                minimum=-3.0, maximum=3.0, value=0.375, step=0.001,
                 label="Conservation (CADD-derived proxy)",
                 info="Training uses clip(CADD / 40, -3, 3), not measured UCSC phyloP"
             )
@@ -273,7 +274,7 @@ with gr.Blocks(css=CSS, title="West Africa Variant Screener") as demo:
             gr.Markdown("### Prediction", elem_classes=["mono"])
 
             result_label    = gr.Textbox(label="Classification", interactive=False)
-            result_conf     = gr.Textbox(label="Model percentage", interactive=False)
+            result_percentage = gr.Textbox(label="Model percentage", interactive=False)
             result_interp   = gr.Textbox(
                 label="Interpretation notes", lines=5, interactive=False
             )
@@ -284,16 +285,17 @@ with gr.Blocks(css=CSS, title="West Africa Variant Screener") as demo:
     btn.click(
         fn=predict,
         inputs=[allele_freq, cadd, gene_region, conservation, gene_name],
-        outputs=[result_label, result_conf, result_interp]
+        outputs=[result_label, result_percentage, result_interp]
     )
 
-    # Illustrative feature presets, not retrieved annotations for named variants.
+    # Illustrative presets follow training's CADD/40 conservation proxy;
+    # they are not retrieved annotations for named variants.
     gr.Examples(
         examples=[
-            [0.004, 34.0, "Exonic (coding)", 2.1, "HBB"],    # higher-CADD HBB preset
-            [0.001, 28.0, "Exonic (coding)", 1.8, "HBB"],    # moderate-CADD HBB preset
-            [0.420, 3.0,  "Intronic / other", -0.5, "G6PD"], # common-frequency G6PD preset
-            [0.000, 42.0, "Exonic (coding)", 2.8, "G6PD"],   # rare-frequency G6PD preset
+            [0.004, 34.0, "Exonic (coding)", 0.85, "HBB"],    # higher-CADD HBB preset
+            [0.001, 28.0, "Exonic (coding)", 0.7, "HBB"],     # moderate-CADD HBB preset
+            [0.420, 3.0,  "Intronic / other", 0.075, "G6PD"], # common-frequency G6PD preset
+            [0.000, 42.0, "Exonic (coding)", 1.05, "G6PD"],   # rare-frequency G6PD preset
         ],
         inputs=[allele_freq, cadd, gene_region, conservation, gene_name],
         label="Illustrative presets (no variant lookup)",
