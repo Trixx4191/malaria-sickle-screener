@@ -6,8 +6,8 @@ interactive interface for HBB, G6PD, HBA1, HBA2 and ACKR1 (`DARC` in the API).
 
 **Research use only. Clinical performance has not been established.**
 
-Documentation reviewed on **30 October 2026**. Model results below refer to
-the recorded **24 October 2026** evaluation.
+Documentation reviewed in **August 2026**. Model results below refer to
+the recorded **2 October 2026** evaluation.
 
 ## Documented user evaluation
 
