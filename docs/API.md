@@ -68,9 +68,12 @@ All five fields are required in a JSON body:
 | `conservation_phylop` | Number, −5–5 inclusive | Conservation feature; the recorded training data use a CADD-derived proxy |
 
 Gene strings are stripped and uppercased; region strings are stripped and
-lowercased. Missing fields, nulls, invalid labels and out-of-range/nonfinite
-numbers return HTTP 422 with a FastAPI `detail` list. The browser's
-conservation range is narrower (−3–3). Use actual numerical JSON values;
+lowercased. Missing fields, nulls, invalid labels, out-of-range numbers and
+quoted nonfinite strings such as `"NaN"` return HTTP 422 with a FastAPI
+`detail` list. Raw `NaN`, `Infinity` and `-Infinity` tokens are not valid JSON;
+they currently cause HTTP 500 when the validation error is serialized. This
+error-handling limitation is also recorded in the technical report. Use finite
+numerical JSON values. The browser's conservation range is narrower (−3–3).
 the request model is not configured for strict numeric typing. Unrecognized
 extra fields are ignored by the current Pydantic model; they do not become
 classifier inputs.
@@ -83,7 +86,7 @@ describe the same real variant. See [DATA.md](DATA.md) for feature definitions.
 ```bash
 curl --fail-with-body http://127.0.0.1:8000/api/predict \
   -H 'Content-Type: application/json' \
-  --data '{"gene_name":"HBB","gene_region":"exonic","allele_freq_afr":0.01,"cadd_score":25,"conservation_phylop":1}'
+  --data '{"gene_name":"HBB","gene_region":"exonic","allele_freq_afr":0.01,"cadd_score":25,"conservation_phylop":0.625}'
 ```
 
 Scores depend on the loaded artifact. Response fields:

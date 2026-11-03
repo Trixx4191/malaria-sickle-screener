@@ -43,14 +43,18 @@ more detail, or inspect `/api/model-info` using the [API guide](API.md).
    model input clears the old score and displays “Inputs changed. Score again.”
 
 The browser sliders cover frequency 0–1 in steps of 0.001, CADD 0–60 in steps
-of 0.5, and conservation −3–3 in steps of 0.1. For finer numerical inputs use
+of 0.5, and conservation −3–3 in steps of 0.001. Conservation is displayed
+to three decimal places. For finer numerical inputs use
 the [API](API.md), which accepts conservation −5–5. Keep original annotations
 when recording a case; displayed slider precision may be insufficient for a
 rare allele.
 
 Selecting a **Preset** fills the controls and immediately submits a score.
 These four examples are illustrative feature combinations. They are not
-retrieved annotations or validated examples of named variants.
+retrieved annotations or validated examples of named variants. Their
+conservation values follow the training proxy `clip(CADD / 40, -3, 3)`.
+The conservation control remains independently editable; changing CADD
+manually does not recalculate it.
 
 ## Read the output
 

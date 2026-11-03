@@ -86,8 +86,10 @@ https://cadd.gs.washington.edu/api/v1.0/GRCh38-v1.7/<chr>:<pos>_<ref>_<alt>
 The client reads `PHRED` and treats an empty result or 404 as no available
 score; see the [CADD API documentation](https://cadd.bihealth.org/api).
 Both source clients retry rate limits and transport failures, stop after
-repeated failures, and cache successful lookups. CADD null entries are
-retried; new failed gnomAD requests are not cached.
+repeated failures, and cache returned values. CADD null entries are retried;
+new gnomAD request failures represented as `None` are not cached. gnomAD
+zeros returned for HTTP-success responses with missing population data can
+be cached, as described below.
 
 Rows with unresolved CADD scores, unresolved gnomAD requests represented as
 `None`, or missing labels are dropped. A drop rate above 30% produces a
@@ -116,12 +118,13 @@ features in order, and the target `label`:
 | `allele_freq_afr` | gnomAD genome `afr` frequency, subject to the missing-data limitation above | Supplied manually by the caller |
 | `cadd_score` | CADD PHRED score | Supplied manually |
 | `gene_region` | Name-derived `exonic=2`, `utr=1`, `intronic/other=0` | Supplied region mapped to the same numeric codes |
-| `conservation_phylop` | `(cadd_score / 40).clip(-3, 3)` | Supplied manually; the UI labels it a phyloP proxy |
+| `conservation_phylop` | `(cadd_score / 40).clip(-3, 3)` | Supplied manually; the UI labels it a CADD-derived proxy |
 | `is_hbb` | `1` for HBB, otherwise `0` | Derived from the selected gene |
 | `review_stars` | ClinVar review-status mapping | Fixed to `1`; not a user input |
 
 `conservation_phylop` contains a CADD-derived proxy, not measured phyloP.
-Independent conservation values change that training relationship. Apart
+The illustrative presets use that same relationship. Independently supplied
+conservation values change that training relationship. Apart
 from `is_hbb`, the model has no gene identity feature: identical annotations
 for any of the other four genes produce identical classifier inputs.
 

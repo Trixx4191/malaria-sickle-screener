@@ -15,12 +15,13 @@ const state = {
 };
 
 // Illustrative feature combinations, not retrieved variant annotations.
+// Conservation values follow the CADD-derived proxy used during training.
 // The residue substitutions illustrate structures and are not model inputs.
 const EXAMPLES = {
-  "hbb-high-cadd":         { gene_name: "HBB",  allele_freq_afr: 0.004, cadd_score: 34.0, gene_region: "exonic", conservation_phylop: 2.1,  residue: 6,   wt: "GLU", mut: "VAL", note: "HBB high-CADD preset: residue 6" },
-  "hbb-moderate-cadd":     { gene_name: "HBB",  allele_freq_afr: 0.001, cadd_score: 28.0, gene_region: "exonic", conservation_phylop: 1.8,  residue: 6,   wt: "GLU", mut: "LYS", note: "HBB moderate-CADD preset: residue 6" },
-  "g6pd-common-frequency": { gene_name: "G6PD", allele_freq_afr: 0.420, cadd_score: 3.0,  gene_region: "exonic", conservation_phylop: -0.5, residue: 68,  wt: "VAL", mut: "MET", note: "G6PD common-frequency preset: residue 68" },
-  "g6pd-rare-frequency":   { gene_name: "G6PD", allele_freq_afr: 0.000, cadd_score: 42.0, gene_region: "exonic", conservation_phylop: 2.8,  residue: 188, wt: "SER", mut: "PHE", note: "G6PD rare-frequency preset: residue 188" },
+  "hbb-high-cadd":         { gene_name: "HBB",  allele_freq_afr: 0.004, cadd_score: 34.0, gene_region: "exonic", conservation_phylop: 0.85,  residue: 6,   wt: "GLU", mut: "VAL", note: "HBB high-CADD preset: residue 6" },
+  "hbb-moderate-cadd":     { gene_name: "HBB",  allele_freq_afr: 0.001, cadd_score: 28.0, gene_region: "exonic", conservation_phylop: 0.7,   residue: 6,   wt: "GLU", mut: "LYS", note: "HBB moderate-CADD preset: residue 6" },
+  "g6pd-common-frequency": { gene_name: "G6PD", allele_freq_afr: 0.420, cadd_score: 3.0,  gene_region: "exonic", conservation_phylop: 0.075, residue: 68,  wt: "VAL", mut: "MET", note: "G6PD common-frequency preset: residue 68" },
+  "g6pd-rare-frequency":   { gene_name: "G6PD", allele_freq_afr: 0.000, cadd_score: 42.0, gene_region: "exonic", conservation_phylop: 1.05,  residue: 188, wt: "SER", mut: "PHE", note: "G6PD rare-frequency preset: residue 188" },
 };
 
 const AA3 = { GLU: "E", VAL: "V", LYS: "K", MET: "M", SER: "S", PHE: "F" };
@@ -99,7 +100,7 @@ function initSliders() {
   cadd.addEventListener("input", () => caddVal.textContent = Number(cadd.value).toFixed(1));
 
   const cons = $("conservation_phylop"), consVal = $("cons-val");
-  cons.addEventListener("input", () => consVal.textContent = Number(cons.value).toFixed(1));
+  cons.addEventListener("input", () => consVal.textContent = Number(cons.value).toFixed(3));
 }
 
 function applyExample(key) {
@@ -112,7 +113,7 @@ function applyExample(key) {
   $("cadd-val").textContent = ex.cadd_score.toFixed(1);
   $("gene_region").value = ex.gene_region;
   $("conservation_phylop").value = ex.conservation_phylop;
-  $("cons-val").textContent = ex.conservation_phylop.toFixed(1);
+  $("cons-val").textContent = ex.conservation_phylop.toFixed(3);
   $("residue_number").value = ex.residue;
   onGeneChange({ preserveResidue: true }).then(loaded => {
     if (loaded && $("gene_name").value === ex.gene_name && Number($("residue_number").value) === ex.residue) {
@@ -140,16 +141,31 @@ async function loadModelInfo() {
     }
 
     if (data.demo_mode) {
-      setModelStatus("Demo mode · synthetic data", "demo", "This demonstration model was trained on synthetic examples, not real genomic data.");
+      setModelStatus("Demo mode · synthetic data • Research use only", "demo", "This demonstration model was trained on synthetic examples, not real genomic data.");
     } else if (data.data_provenance !== "real") {
-      setModelStatus("Warning · unverified training data", "warning", `Training feature provenance: ${data.data_provenance || "unknown"}. These results are not verified as using real gnomAD/CADD features.`);
+      setModelStatus("Warning · unverified data • Research use only", "warning", `Training feature provenance: ${data.data_provenance || "unknown"}. These results are not verified as using real gnomAD/CADD features.`);
     } else {
-      setModelStatus(`real data · ${modelName}`, "ready", "The model was trained with real gnomAD and CADD feature data.");
+      setModelStatus("Real model · real data • Research use only", "ready", `${modelName}: trained with real gnomAD and CADD feature data. Not validated for clinical use.`);
     }
+    setOptionalText("model-test-count", Number.isFinite(m.test_variants) ? m.test_variants.toLocaleString() : "n/a");
+    setOptionalText("model-cv", hasRealData && Number.isFinite(m.cv_mean)
+      ? m.cv_mean.toFixed(3) + (Number.isFinite(m.cv_std) ? ` ± ${m.cv_std.toFixed(3)}` : "") : "n/a");
+    const evaluation = m.evaluation_set === "held_out_test" ? "Held-out test evaluation. " : "";
+    const training = m.cv_method ? `Training method: ${String(m.cv_method).replace(/_/g, " ")}.` : "Training method not reported by the API.";
+    setOptionalText("model-training-note", data.demo_mode
+      ? "Synthetic demonstration model. Evaluation metrics are not evidence of performance on real genomic variants."
+      : `${modelName}. ${evaluation}${training}`);
+    const afr = m.afr_subset;
+    setOptionalText("model-afr-note", hasRealData && afr && Number.isFinite(afr.variants)
+      ? `AFR evaluation subset: ${afr.variants} variants. ${Number.isFinite(afr.auc) ? `AUC ${afr.auc.toFixed(3)}.` : "AUC not available for this subset."}` : "");
   } catch (e) {
-    setModelStatus("Model unavailable", "error", "Model information could not be loaded. Check your connection and reload the page.");
+    setModelStatus("Model unavailable • Research use only", "error", "Model information could not be loaded. Check your connection and reload the page.");
     setOptionalText("model-auc", "n/a");
     setOptionalText("model-training-count", "n/a");
+    setOptionalText("model-test-count", "n/a");
+    setOptionalText("model-cv", "n/a");
+    setOptionalText("model-afr-note", "");
+    setOptionalText("model-training-note", "Model information could not be loaded. Evaluation metrics are unavailable.");
   }
 }
 
@@ -179,6 +195,7 @@ function invalidatePrediction() {
 }
 
 async function submitPrediction() {
+  selectWorkspaceView("score");
   if (state.predictionRequest) state.predictionRequest.abort();
   const controller = new AbortController();
   const version = ++state.predictionVersion;
@@ -247,7 +264,11 @@ function renderResult(result) {
   let caveat = "";
   if (result.demo_mode) caveat = "  (demo model, synthetic data)";
   else if (result.data_provenance !== "real") caveat = `  (⚠ trained on ${result.data_provenance} data, not real gnomAD/CADD)`;
-  $("prob-label").textContent = `${result.probability}% pathogenic probability` + caveat;
+  $("prob-label").textContent = `${result.probability}% model score` + caveat;
+  const interpretation = result.tier === "pathogenic" ? "The model places this variant in the high-score tier (≥75%)."
+    : result.tier === "benign" ? "The model places this variant in the low-score tier (<40%)."
+    : "The model places this variant in the uncertain tier (40–<75%).";
+  setOptionalText("result-interpretation", `${interpretation} Interpret with the supplied annotations and research notes.`);
 
   const notesList = $("notes-list");
   notesList.innerHTML = "";
@@ -276,8 +297,14 @@ function renderResult(result) {
       track.appendChild(fill);
       row.appendChild(label);
       row.appendChild(track);
+      const weight = document.createElement("span");
+      weight.className = "contrib-value";
+      weight.textContent = `${c.weight > 0 ? "+" : ""}${c.weight.toFixed(3)}`;
+      row.appendChild(weight);
       bars.appendChild(row);
     });
+  const total = result.contributions.reduce((sum, contribution) => sum + contribution.weight, 0);
+  setOptionalText("weights-total", `${total > 0 ? "+" : ""}${total.toFixed(3)}`);
 }
 
 /* ── Structure panel ───────────────────────────────────────────── */
@@ -307,6 +334,7 @@ async function onGeneChange({ preserveResidue = false } = {}) {
   if (!state.viewer) return false;
 
   state.viewer.clear();
+  resizeStructureViewer();
   state.viewer.render();
   const controller = new AbortController();
   state.structureRequest = controller;
@@ -404,7 +432,7 @@ async function structureUrl(info, signal) {
 }
 
 /**
- * Keep secondary-structure colors independent of prediction risk:
+ * Keep secondary-structure colors independent of the model score:
  * 3Dmol's ssPyMol palette is helix red, sheet yellow, coil green.
  * Fade other chains to focus the selected gene without changing the palette.
  * Residue atom details use Jmol element colors (C gray, N blue, O red, S yellow).
@@ -529,16 +557,22 @@ async function loadHeatmap(gene) {
   const controller = new AbortController();
   state.heatmapRequest = controller;
   panel.classList.add("hidden");
+  setOptionalText("matrix-status", `Loading ESM2 substitutions for ${displayGene(gene)}…`);
+  $("matrix-status")?.classList.remove("hidden");
   $("matrix-detail").classList.add("hidden");
   try {
     const res = await fetch(`/api/heatmap/${gene}`, { signal: controller.signal });
-    if (!res.ok) return;
+    if (!res.ok) throw new Error("Substitution data unavailable");
     const data = await res.json();
     if (state.heatmapRequest !== controller) return;
     renderMatrix(data);
     panel.classList.remove("hidden");
+    $("matrix-status")?.classList.add("hidden");
   } catch (e) {
-    if (state.heatmapRequest === controller) panel.classList.add("hidden");
+    if (state.heatmapRequest === controller) {
+      panel.classList.add("hidden");
+      setOptionalText("matrix-status", `ESM2 substitutions are unavailable for ${displayGene(gene)}. Choose another gene or reselect this gene to retry. Variant scoring and the structure viewer remain available.`);
+    }
   } finally {
     if (state.heatmapRequest === controller) state.heatmapRequest = null;
   }
@@ -603,11 +637,61 @@ function showColumnDetail(data, pos) {
     <table class="matrix-table"><tr><th>mutation</th><th>score</th></tr>${rows}</table>`;
 }
 
+/* Shared reference panels stay mounted so tab changes preserve viewer state. */
+function resizeStructureViewer() {
+  const container = $("viewer");
+  if (!state.viewer || !container?.clientWidth || !container.clientHeight) return;
+  state.viewer.resize?.();
+  state.viewer.render();
+}
+
+function selectWorkspaceView(view) {
+  const tabs = [...document.querySelectorAll(".workspace-tab")];
+  if (!tabs.some(tab => tab.dataset.view === view)) return;
+  $("workspace").dataset.activeView = view;
+  $("workspace-views").hidden = view === "substitutions";
+  $("workspace-views").setAttribute("aria-labelledby", `tab-${view}`);
+  $("substitutions-view").hidden = view !== "substitutions";
+  tabs.forEach(tab => {
+    const selected = tab.dataset.view === view;
+    tab.setAttribute("aria-selected", String(selected));
+    tab.tabIndex = selected ? 0 : -1;
+  });
+  if (view === "about") $("evaluation-notes").open = true;
+  // Wait for CSS to reveal and size the existing canvas before resizing it.
+  window.requestAnimationFrame?.(resizeStructureViewer);
+}
+
+function initWorkspaceTabs() {
+  const tabs = [...document.querySelectorAll(".workspace-tab")];
+  tabs.forEach((tab, index) => {
+    tab.addEventListener("click", () => selectWorkspaceView(tab.dataset.view));
+    tab.addEventListener("keydown", event => {
+      let next;
+      if (event.key === "ArrowRight") next = (index + 1) % tabs.length;
+      else if (event.key === "ArrowLeft") next = (index + tabs.length - 1) % tabs.length;
+      else if (event.key === "Home") next = 0;
+      else if (event.key === "End") next = tabs.length - 1;
+      else return;
+      event.preventDefault();
+      selectWorkspaceView(tabs[next].dataset.view);
+      tabs[next].focus();
+    });
+  });
+  if (window.ResizeObserver) {
+    const observer = new window.ResizeObserver(resizeStructureViewer);
+    observer.observe($("viewer"));
+  } else {
+    window.addEventListener?.("resize", resizeStructureViewer);
+  }
+}
+
 /* ── Wire up ───────────────────────────────────────────────────── */
 
 document.addEventListener("DOMContentLoaded", () => {
   updateGeneContext();
   initSliders();
+  initWorkspaceTabs();
   setOptionalText("result-state", "Ready");
   setOptionalText("result-gene", displayGene($("gene_name").value));
   setOptionalText("viewer-gene", displayGene($("gene_name").value));

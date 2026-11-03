@@ -57,9 +57,12 @@ def fetch_all_gnomad(variant_ids: list[str], batch_size: int = 50, max_variants:
     """
     Fetch gnomAD AFR frequencies for all variants.
 
-    Failed lookups (after retries are exhausted) map to None — NEVER 0.0.
-    A None means "we don't know", not "frequency is zero"; build() drops
-    those rows rather than silently treating them as real data.
+    Request/decoding failures and exhausted retries return None; build()
+    drops those rows. HTTP-success responses without usable variant,
+    genome or AFR denominator data can instead become 0.0. GraphQL errors
+    inside HTTP 200 responses are not explicitly rejected. Cached values
+    are reused as stored, so a returned zero does not guarantee observed
+    absence in the source population. See docs/DATA.md.
     """
     valid_ids = [v for v in variant_ids if v is not None]
     if max_variants is not None:
@@ -82,8 +85,10 @@ def fetch_all_gnomad(variant_ids: list[str], batch_size: int = 50, max_variants:
             cache = json.load(f)
 
     def query_one(vid: str, max_retries: int = 6):
-        """Returns a float AFR frequency, or None if genuinely unresolvable
-        after retrying through rate limits / transient errors."""
+        """Return a frequency or None on request/decoding failure or exhausted
+        retries. HTTP-success responses without a positive AFR denominator
+        return 0.0, including some missing-data/error responses.
+        """
         for attempt in range(max_retries):
             try:
                 resp = session.post(
@@ -112,7 +117,7 @@ def fetch_all_gnomad(variant_ids: list[str], batch_size: int = 50, max_variants:
             except Exception as exc:
                 print(f"  Warning: gnomAD lookup failed for {vid}: {exc}")
                 return None
-        return None  # retries exhausted — genuinely unresolvable, not a zero
+        return None  # retries exhausted; retain a missing request result
 
     results = {}
     seen = set()
@@ -137,8 +142,8 @@ def fetch_all_gnomad(variant_ids: list[str], batch_size: int = 50, max_variants:
                 print(f"gnomAD has failed {consecutive_failures} lookups in a row — the API")
                 print("is likely persistently rate-limiting or unreachable right now.")
                 print("Stopping instead of continuing to hammer it. Re-run the script")
-                print("later (already-fetched results are cached) rather than letting")
-                print("thousands of variants silently fall back to fake values.")
+                print("later (previously returned values are cached). Remaining")
+                print("variants have no returned values and will be excluded for now.")
                 print("!" * 60)
                 break
         else:
@@ -152,8 +157,10 @@ def fetch_all_gnomad(variant_ids: list[str], batch_size: int = 50, max_variants:
         with open(GNOMAD_CACHE, "w") as f:
             json.dump(cache, f)
 
-    print(f"  gnomAD: {len(results) - n_failed} resolved, {n_failed} unresolved "
-          f"(unresolved rows will be dropped, not zero-filled).")
+    n_missing = sum(value is None for value in results.values())
+    print(f"  gnomAD: {len(results)} returned entries, {n_missing} None entries "
+          f"({n_failed} new lookup failures).")
+    print("  None entries will be dropped; returned zeros can reflect missing source coverage.")
     return results
 
 
@@ -217,8 +224,9 @@ def build(allow_fake: bool = False) -> pd.DataFrame:
         print(f"\nFetching REAL data from gnomAD + CADD APIs "
               f"({'all' if max_variants is None else max_variants} variants)…")
         gnomad_map = fetch_all_gnomad(df["variant_id_gnomad"].tolist(), max_variants=max_variants)
-        # NOTE: intentionally NOT .fillna(0.0) — a failed/unresolved lookup is
-        # unknown, not zero. Rows that stay NaN get dropped below, not faked.
+        # Preserve request failures represented as None rather than filling
+        # them with zero. Some HTTP-success missing-data cases are already
+        # encoded as 0.0 by the fetcher; see its docstring and docs/DATA.md.
         df["allele_freq_afr"] = df["variant_id_gnomad"].map(gnomad_map)
 
         cadd_map = fetch_all_cadd(df, max_variants=max_variants)
@@ -267,7 +275,7 @@ def build(allow_fake: bool = False) -> pd.DataFrame:
     if use_remote and n_before > 0 and n_dropped / n_before > 0.3:
         print("⚠ More than 30% of variants were dropped due to failed API lookups.")
         print("  Consider re-running later if the APIs were rate-limiting you —")
-        print("  already-resolved variants are cached and won't be re-fetched.")
+        print("  previously returned values are cached and will be reused.")
     print(f"Final matrix: {len(features):,} variants × {features.shape[1]} columns")
     print(f"\nLabel distribution:")
     print(features["label"].value_counts().to_string())
