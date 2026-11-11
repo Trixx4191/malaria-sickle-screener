@@ -83,3 +83,20 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
+
+# Personal records, drafts and local review work
+/private/
+/personal/
+/review/
+/paper/
+/drafts/
+/scratch/
+/notes/private/
+/docs/DEPLOYMENT_HISTORY.md
+/docs/reports/
+
+# Local agent and credential state
+/.codex/
+/.agents/
+/.claude/
+/.aws/
